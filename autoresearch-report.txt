@@ -13,6 +13,8 @@ Files >1000 lines:  16
 
 === Type safety ===
 any casts (excl gen):      717
+  source:                  449
+  test:                    268
 @ts-ignore/expect-error:   48
 catch(e: any):             13
 
@@ -95,6 +97,8 @@ METRIC debt_score=93.2
 METRIC god_files=57
 METRIC god_files_1k=16
 METRIC any_casts=717
+METRIC any_casts_src=449
+METRIC any_casts_test=268
 METRIC ts_ignore=48
 METRIC todo_fixme=18
 METRIC dual_write_markers=15

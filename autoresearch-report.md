@@ -65,20 +65,32 @@ OpenCode 是一个 ~186K 行 TypeScript 单仓项目，包含 20 个包。核心
 | 指标 | 数量 |
 |------|------|
 | `any` 类型使用（排除生成代码） | **717** |
+| 其中：**源码** | **449** |
+| 其中：测试 | 268 |
 | `@ts-ignore` / `@ts-expect-error` | 48 |
 | `catch(e: any)` | 13 |
 
-**`any` 使用密度最高的文件：**
+449 处生产代码中的 `any` 是真正的风险。按包分布：
 
-| 文件 | any 次数 | 说明 |
-|------|---------|------|
+| 包 | 源码 `any` | 说明 |
+|----|----------|------|
+| console | **321** | 273 在 zen provider 的 3 个文件 |
+| opencode | **71** | provider.ts (18), copilot.ts (10), transform.ts (7) 等 |
+| core | 20 | log.ts (11, 基础设施), effect-zod.ts (4, Effect 内部) |
+| sdk | 13 | client.gen.ts (5, 生成代码), 其余散布 |
+| plugin | 8 | 插件加载 API |
+
+**console 包 3 个文件贡献了全部源码 `any` 的 61%**。修复这 3 个文件可将源码 `any` 从 449 降至 176（-61%）。
+
+**源码 `any` 密度最高的文件（Top 5，排除测试）：**
+
+| 文件 | `any` | 说明 |
+|------|-------|------|
 | `console/.../provider/openai.ts` | 123 | OpenAI 请求格式转换 |
 | `console/.../provider/anthropic.ts` | 117 | Anthropic 请求格式转换 |
-| `opencode/test/provider/transform.test.ts` | 111 | 测试中的 any |
 | `console/.../provider/openai-compatible.ts` | 33 | 兼容层 |
 | `opencode/src/provider/provider.ts` | 18 | 自定义提供者加载 |
-
-Console zen 提供者层（3 个文件）合计 **273 次 `any`**，是最严重的类型安全黑洞。
+| `opencode/src/plugin/github-copilot/copilot.ts` | 10 | Copilot 插件适配 |
 
 ### 2.4 迁移标记
 

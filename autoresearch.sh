@@ -65,8 +65,17 @@ TS_IGNORE=$(grep -rn '// @ts-ignore\|// @ts-expect-error\|// @ts-nocheck' \
 CATCH_ANY=$(grep -rn 'catch\s*(.*: any' --include='*.ts' packages/ \
   --exclude-dir=node_modules --exclude-dir=.sst 2>/dev/null | wc -l)
 
+ANY_SRC=$({ grep -rn 'as any\|: any\b' --include='*.ts' packages/ \
+  --exclude-dir=node_modules --exclude-dir=.sst 2>/dev/null \
+  | grep -v 'types.gen.ts\|sdk.gen.ts\|\.test\.ts' || true; } | wc -l)
+ANY_TEST=$({ grep -rn 'as any\|: any\b' --include='*.test.ts' packages/ \
+  --exclude-dir=node_modules --exclude-dir=.sst 2>/dev/null \
+  | grep -vc 'types.gen.ts\|sdk.gen.ts' || true; })
+
 tee -a "$REPORT" <<EOF
 any casts (excl gen):      $ANY_COUNT
+  source:                  $ANY_SRC
+  test:                    $ANY_TEST
 @ts-ignore/expect-error:   $TS_IGNORE
 catch(e: any):             $CATCH_ANY
 EOF
@@ -260,6 +269,8 @@ metric "debt_score" "$DEBT_SCORE_CAPPED"
 metric "god_files" "$GOD_COUNT"
 metric "god_files_1k" "$GOD_1K"
 metric "any_casts" "$ANY_COUNT"
+metric "any_casts_src" "$ANY_SRC"
+metric "any_casts_test" "$ANY_TEST"
 metric "ts_ignore" "$TS_IGNORE"
 metric "todo_fixme" "$REAL_TODOS"
 metric "dual_write_markers" "$DUAL_WRITE"
