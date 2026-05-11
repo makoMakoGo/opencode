@@ -54,6 +54,48 @@ Files >500 lines:   $GOD_COUNT
 Files >1000 lines:  $GOD_1K
 EOF
 
+# ── 2b. Code duplication ────────────────────────────────────
+section "Code duplication"
+DUP_STATS=$(python3 << 'PYEOF'
+import os, re, hashlib
+from collections import Counter
+BLOCK_SIZE = 8
+blocks = Counter()
+for root, dirs, files in os.walk('packages/opencode/src'):
+    dirs[:] = [d for d in dirs if d != 'node_modules']
+    for f in files:
+        if not f.endswith('.ts') or f.endswith('.test.ts') or f.endswith('.d.ts') or f.endswith('.gen.ts'):
+            continue
+        filepath = os.path.join(root, f)
+        with open(filepath) as fh:
+            lines = fh.readlines()
+        normalized = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith('//') or stripped.startswith('*') or stripped.startswith('/*'):
+                continue
+            normalized.append(stripped)
+        for i in range(len(normalized) - BLOCK_SIZE + 1):
+            block = '\n'.join(normalized[i:i+BLOCK_SIZE])
+            if 'OpenApi.annotations' in block: continue
+            if block.count('middleware(') >= 2: continue
+            if block.count('.annotate(') >= 2: continue
+            h = hashlib.md5(block.encode()).hexdigest()
+            blocks[h] += 1
+dups = sum(1 for c in blocks.values() if c > 1)
+instances = sum(c for c in blocks.values() if c > 1)
+print(f"{dups} {instances}")
+PYEOF
+)
+DUP_BLOCKS=$(echo "$DUP_STATS" | awk '{print $1}')
+DUP_INSTANCES=$(echo "$DUP_STATS" | awk '{print $2}')
+metric dup_blocks "$DUP_BLOCKS"
+metric dup_instances "$DUP_INSTANCES"
+tee -a "$REPORT" <<EOF
+Duplicate 8-line blocks:  $DUP_BLOCKS
+Total duplicate instances: $DUP_INSTANCES
+EOF
+
 # ── 3. Type safety — any casts ──────────────────────────────
 section "Type safety"
 ANY_COUNT=$(grep -rn 'as any\|: any\b' --include='*.ts' packages/ \

@@ -11,6 +11,12 @@ Test-to-source ratio: 0.33
 Files >500 lines:   57
 Files >1000 lines:  16
 
+=== Code duplication ===
+METRIC dup_blocks=543
+METRIC dup_instances=1181
+Duplicate 8-line blocks:  543
+Total duplicate instances: 1181
+
 === Type safety ===
 any casts (excl gen):      717
   source:                  449

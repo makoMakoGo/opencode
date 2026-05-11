@@ -60,6 +60,12 @@ OpenCode 是一个 ~186K 行 TypeScript 单仓项目，包含 20 个包。核心
 
 `prompt.ts` 以 63 个 import 成为耦合最严重的文件，其 Effect.gen 跨越 1,822 行（占文件的 87%）。
 
+**代码重复**（8 行块去重，opencode 包）：
+- 543 个重复块，1,181 个实例（排除 HTTP 路由注解等结构性模板）
+- 139 个跨文件重复——相同的 8 行代码出现在不同文件中
+- 重复最严重的文件：`acp/agent.ts` (155)、`provider/transform.ts` (84)、`lsp/server.ts` (78)
+- 跨文件模式：`tool/read.ts`、`tool/task.ts`、`tool/apply_patch.ts` 共享 tool 注册模板；`session/message.ts`、`message-v2.ts`、`v2/session-event.ts` 共享 Schema 定义
+
 ### 2.3 类型安全
 
 | 指标 | 数量 |
