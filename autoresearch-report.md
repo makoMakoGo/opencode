@@ -17,7 +17,7 @@ OpenCode 是一个 ~186K 行 TypeScript 单仓项目，包含 20 个包。核心
 |----------|--------|------|----------|
 | 巨型文件 (>1000 LOC) | 🔴 高 | 15.0/15 | 16 个文件超 1000 行 |
 | `any` 类型泛滥 | 🔴 高 | 15.0/15 | 717 处，zen provider 占 273 |
-| v1/v2 session 双写 | 🔴 高 | 15.0/15 | processor.ts, prompt.ts |
+| v1/v2 session 双写 | 🔴 高 | 15.0/15 | 4 个文件, 20 处 flag 引用, 15 处 TODO(v2) |
 | 深层嵌套 (>4 级缩进) | 🟡 中 | 10.0/10 | 3,693 行 |
 | 已废弃 API | 🟡 中 | 10.0/10 | 19 个 @deprecated |
 | 测试质量 | 🟡 中 | 10.0/10 | 5 个脆弱测试，16 个巨型测试 |
@@ -495,12 +495,16 @@ Layer.provide(SessionCompaction.defaultLayer),
 
 OpenCode 的技术债务呈现**高度集中**的特征：93.2 分中 45 分来自三个满分维度。这不是一个"到处都有问题"的项目，而是一个在两个关键过渡期（Effect 迁移、v2 event system 迁移）中积累了集中债务的项目。
 
-**三个核心事实**：
+**核心事实**：
 
 1. **v2 session 双写是系统性风险**。`Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM` 在 4 个文件中有 20 处引用，形成了一个全局分支点。每次 bug fix 都要同步 v1/v2 两条路径。这不是局部问题——它影响了 session 处理的核心路径。
 
 2. **console zen 是可快速修复的类型安全黑洞**。3 个文件贡献了 273 次 `any`（console 包总量的 85%）。但 `google.ts` 已经证明了类型化转换是可行的（0 次 `any`）。这是一个有现成参考方案的修复。
 
-3. **基础设施是健康的**。Effect 覆盖 55% 文件（核心业务层 100%）、测试 99.6% 通过率、Effect 依赖注入体系完整（66 Service + 66 Layer）、新代码（如 `data-migration.ts`）遵循规范的 Effect 模块结构。项目的架构基础是稳固的。
+3. **20 模块循环依赖是架构级隐患**。config、lsp 等基础设施层反向依赖 session、project 应用层（最短环路：lsp → project → session → lsp），导致这 20 个模块无法独立测试或替换。Effect 迁移加剧了 wiring 耦合（`app-runtime.ts` 手动连接 50 个导入），循环依赖使拆分变得困难。
 
-**推荐的投入顺序**：P0（v2 迁移）→ P1（console zen 类型化 + 废弃 API 清理）→ P2（测试回归修复 + 巨型文件拆分）。前两项完成后，债务评分预计从 93.2 降至 ~48，项目进入可控状态。
+4. **依赖风险集中在 PTY 和协议层**。19 个 v0.x 不稳定依赖中，`bun-pty`（PTY 核心）和 `@agentclientprotocol/sdk`（ACP 协议）的 API 变更会直接影响核心功能。4 个补丁包表明上游有未解决的阻塞 bug。
+
+5. **基础设施整体健康**。Effect 覆盖 55% 文件（核心业务层 100%）、测试 99.6% 通过率、Effect 依赖注入体系完整（66 Service + 66 Layer）、新代码（如 `data-migration.ts`）遵循规范的 Effect 模块结构。项目的架构基础是稳固的。
+
+**推荐的投入顺序**：P0（v2 迁移）→ P1（console zen 类型化 + 废弃 API 清理）→ P2（测试回归修复 + 巨型文件拆分 + 循环依赖拆分）。前两项完成后，债务评分预计从 93.2 降至 ~48，项目进入可控状态。
