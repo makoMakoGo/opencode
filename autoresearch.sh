@@ -103,12 +103,11 @@ EOF
 # ── 5. Effect migration ─────────────────────────────────────
 section "Effect migration"
 EFFECT_FILES=$({ grep -rl 'Effect\.\|yield\*' --include='*.ts' packages/opencode/src/ 2>/dev/null || true; } | wc -l)
-RAW_ASYNC=$({ grep -rl 'async function\|Promise<' --include='*.ts' packages/opencode/src/ 2>/dev/null \
-  | grep -v -l 'Effect\.' 2>/dev/null || true; } | wc -l)
+EFFECT_IMPORT=$({ grep -rl '"effect"' --include='*.ts' packages/opencode/src/ 2>/dev/null || true; } | wc -l)
 
 tee -a "$REPORT" <<EOF
-Effect-ified files:     $EFFECT_FILES
-Raw async/Promise:      $RAW_ASYNC
+Effect.gen/yield* files:  $EFFECT_FILES
+Effect import files:      $EFFECT_IMPORT
 EOF
 
 # ── 6. Deep nesting (>4 indent levels) ──────────────────────
@@ -281,7 +280,7 @@ metric "deprecated_markers" "$DEPRECATED"
 metric "deep_nesting_lines" "$DEEP_LINES"
 metric "no_test_packages" "$NO_TEST_COUNT"
 metric "effect_files" "$EFFECT_FILES"
-metric "raw_async_files" "$RAW_ASYNC"
+metric "effect_import_files" "$EFFECT_IMPORT"
 metric "total_src_files" "$TOTAL_SRC"
 metric "total_test_files" "$TOTAL_TEST"
 metric "source_lines" "$TOTAL_LINES"

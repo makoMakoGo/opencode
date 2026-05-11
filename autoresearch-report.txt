@@ -24,8 +24,8 @@ Dual-write migration:    15
 @deprecated markers:     19
 
 === Effect migration ===
-Effect-ified files:     168
-Raw async/Promise:      1
+Effect.gen/yield* files:  168
+Effect import files:      241
 
 === Deep nesting ===
 Lines indented >4 levels: 3693
@@ -106,7 +106,7 @@ METRIC deprecated_markers=19
 METRIC deep_nesting_lines=3693
 METRIC no_test_packages=5
 METRIC effect_files=168
-METRIC raw_async_files=1
+METRIC effect_import_files=241
 METRIC total_src_files=987
 METRIC total_test_files=329
 METRIC source_lines=185865

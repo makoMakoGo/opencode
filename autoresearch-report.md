@@ -129,10 +129,18 @@ if (Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM) {
 
 | 指标 | 数值 |
 |------|------|
-| Effect 化文件 | 168 |
-| 原始 async/Promise 文件 | 1 |
+| 总源文件 | 434 |
+| 导入 effect 包的文件 | 241 (55%) |
+| 使用 Effect.gen/yield* 的文件 | 168 (39%) |
 
-Effect 迁移几乎完成。66 个 Service 声明、66 个 Layer.effect、58 个 defaultLayer，形成了完整的依赖注入体系。
+Effect 迁移覆盖了核心业务逻辑层（session、provider、project、storage、bus）。未迁移的 193 个文件主要是：
+- **util 辅助函数**（26 个）：`lock.ts`, `process.ts`, `timeout.ts` 等基础设施，不涉及业务逻辑
+- **CLI 命令层**（39 个）：TUI 渲染、命令处理等边界代码
+- **SDK 适配器**（22 个）：Copilot/OpenAI SDK 的 `external API` 封装
+- **config 解析器**（6 个）：配置文件读取
+- **其他**：plugin 加载、LSP 客户端等边界层
+
+66 个 Service 声明、66 个 Layer.effect、58 个 defaultLayer，形成了完整的依赖注入体系。核心 Effect 迁移已完成，剩余文件属于合理的边界层。
 
 ### 2.6 模块耦合
 
@@ -347,7 +355,7 @@ Layer.provide(SessionCompaction.defaultLayer),
 
 | 领域 | 评估 | 数据 |
 |------|------|------|
-| Effect 迁移 | ✅ 几乎完成 | 168/169 文件 |
+| Effect 迁移 | ✅ 核心层完成 | 241 import effect / 434 总文件 (55%) |
 | 测试覆盖 | ✅ 核心包良好 | 227 test / 434 src |
 | 模块约定 | ✅ 有明确规范 | AGENTS.md 含 Effect 规范 |
 | 废弃标记透明 | ✅ 全部标注 | 19 个 @deprecated |
@@ -439,6 +447,6 @@ OpenCode 的技术债务呈现**高度集中**的特征：93.2 分中 45 分来�
 
 2. **console zen 是可快速修复的类型安全黑洞**。3 个文件贡献了 273 次 `any`（console 包总量的 85%）。但 `google.ts` 已经证明了类型化转换是可行的（0 次 `any`）。这是一个有现成参考方案的修复。
 
-3. **基础设施是健康的**。Effect 迁移 99% 完成、测试 99.6% 通过率、Effect 依赖注入体系完整（66 Service + 66 Layer）、新代码（如 `data-migration.ts`）遵循规范的 Effect 模块结构。项目的架构基础是稳固的。
+3. **基础设施是健康的**。Effect 覆盖 55% 文件（核心业务层 100%）、测试 99.6% 通过率、Effect 依赖注入体系完整（66 Service + 66 Layer）、新代码（如 `data-migration.ts`）遵循规范的 Effect 模块结构。项目的架构基础是稳固的。
 
 **推荐的投入顺序**：P0（v2 迁移）→ P1（console zen 类型化 + 废弃 API 清理）→ P2（测试回归修复 + 巨型文件拆分）。前两项完成后，债务评分预计从 93.2 降至 ~48，项目进入可控状态。
