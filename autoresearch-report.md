@@ -181,9 +181,10 @@ Effect 迁移几乎完成。66 个 Service 声明、66 个 Layer.effect、58 个
 - **console 包的 `any` 密度是 opencode 的 4.4 倍**（321/104 vs 335/434），几乎全部集中在 zen provider 的 3 个文件中
 - **opencode 包是唯一的 TODO 来源**（16/18），双写迁移和 provider 层注释全在此包
 - **plugin 包的 11 个 @deprecated 是唯一来源**——废弃的 TUI 插件 API
-- **llm 包 18 个 ts-ignore** 是最多的，但没有 `any` 使用（0），说明它用 ts-ignore 做临时绕过而非 any
-- **app 包有 182 个非空断言 (`!`)**, opencode 有 57 个，是另一类类型安全隐患
+- **llm 包 18 个 ts-ignore** 全部在类型测试文件（`auth-options.types.ts`, `provider.types.ts`）中——这些是**刻意编写的负向类型测试**，验证错误类型被拒绝。不是债务，而是良好的类型安全实践。
+- **core 包 20 次 `any`** 主要在 `log.ts`（日志接口，本质上是 `any` 类型的）和 `effect-zod.ts`（Effect 内部交互）。属于基础设施层面，难以避免。
 
+- **app 包有 182 个非空断言 (`!`)**, opencode 有 57 个，是另一类类型安全隐患
 ### 2.9 测试覆盖盲区
 
 **5 个包有源代码但完全没有测试：**
@@ -287,7 +288,7 @@ Layer.provide(SessionCompaction.defaultLayer),
 
 ---
 
-## 4. 积极信号
+## 4. 积极信号与非债务
 
 | 领域 | 评估 | 数据 |
 |------|------|------|
@@ -297,6 +298,15 @@ Layer.provide(SessionCompaction.defaultLayer),
 | 废弃标记透明 | ✅ 全部标注 | 19 个 @deprecated |
 | TODO 标记少 | ✅ 控制良好 | 仅 18 个真实 TODO |
 | 模块耦合 | ✅ 整体可控 | 仅 3 个高耦合文件 |
+| llm 包类型安全 | ✅ 负向类型测试 | 18 个 ts-ignore 全是刻意编写的类型守卫测试 |
+| Effect 依赖注入 | ✅ 完整体系 | 66 Service + 66 Layer + 58 defaultLayer |
+
+**需要区分的"伪债务"**（看起来像债务但实际合理）：
+
+- **llm 包 18 个 ts-ignore**: 全部在类型测试文件中，验证错误类型被正确拒绝。这是类型安全的加分项，不是减分项。
+- **core 包 20 次 `any`**: 主要在 `log.ts`（日志接口本质上是 `any`）和 `effect-zod.ts`（Effect 内部 API 访问）。基础设施层面，难以避免。
+- **app-runtime.ts 50 个导入**: 作为全局 Layer 组装点，这是 Effect 架构的必然结果，不是过度耦合。
+- **SDK 生成代码**: `types.gen.ts` + `sdk.gen.ts` 共 ~20K 行，全由 OpenAPI 生成器产出，不属于手写代码债务。
 
 ---
 
