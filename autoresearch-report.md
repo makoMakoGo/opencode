@@ -330,6 +330,7 @@ Layer.provide(SessionCompaction.defaultLayer),
 | 模块耦合 | ✅ 整体可控 | 仅 3 个高耦合文件 |
 | llm 包类型安全 | ✅ 负向类型测试 | 18 个 ts-ignore 全是刻意编写的类型守卫测试 |
 | 测试运行时 | ✅ 99.6% 通过 | 2,923 tests, 11 fail |
+| 新代码质量 | ✅ 规范 Effect 模块 | data-migration.ts 遵循 Service+Layer+defaultLayer 模式 |
 | Effect 依赖注入 | ✅ 完整体系 | 66 Service + 66 Layer + 58 defaultLayer |
 
 **需要区分的"伪债务"**（看起来像债务但实际合理）：
@@ -400,3 +401,19 @@ Layer.provide(SessionCompaction.defaultLayer),
 | **总计** | **100** | **93.2** | 100 | |
 
 **解读**: 45 分来自三个满分维度（巨型文件、any、双写）。完成 P0+P1 后，预期评分降至 **~48**（移除双写 15 分 + 降低 any 至 ~200 可省 10 分 + 清理 deprecated 5 分）。
+
+---
+
+## 7. 结论
+
+OpenCode 的技术债务呈现**高度集中**的特征：93.2 分中 45 分来自三个满分维度。这不是一个"到处都有问题"的项目，而是一个在两个关键过渡期（Effect 迁移、v2 event system 迁移）中积累了集中债务的项目。
+
+**三个核心事实**：
+
+1. **v2 session 双写是系统性风险**。`Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM` 在 4 个文件中有 20 处引用，形成了一个全局分支点。每次 bug fix 都要同步 v1/v2 两条路径。这不是局部问题——它影响了 session 处理的核心路径。
+
+2. **console zen 是可快速修复的类型安全黑洞**。3 个文件贡献了 273 次 `any`（console 包总量的 85%）。但 `google.ts` 已经证明了类型化转换是可行的（0 次 `any`）。这是一个有现成参考方案的修复。
+
+3. **基础设施是健康的**。Effect 迁移 99% 完成、测试 99.6% 通过率、Effect 依赖注入体系完整（66 Service + 66 Layer）、新代码（如 `data-migration.ts`）遵循规范的 Effect 模块结构。项目的架构基础是稳固的。
+
+**推荐的投入顺序**：P0（v2 迁移）→ P1（console zen 类型化 + 废弃 API 清理）→ P2（测试回归修复 + 巨型文件拆分）。前两项完成后，债务评分预计从 93.2 降至 ~48，项目进入可控状态。
