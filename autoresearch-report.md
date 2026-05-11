@@ -92,6 +92,15 @@ OpenCode 是一个 ~186K 行 TypeScript 单仓项目，包含 20 个包。核心
 | `opencode/src/provider/provider.ts` | 18 | 自定义提供者加载 |
 | `opencode/src/plugin/github-copilot/copilot.ts` | 10 | Copilot 插件适配 |
 
+
+**`@ts-ignore`/`@ts-expect-error` 分析**（48 处总计，其中 **30 处在源码中**）：
+- 10 处有明确说明（外部 API 类型缺失：npm、bun、ai-sdk、构建生成文件）
+- 10 处**无说明的 `@ts-ignore`**（`prompt.ts`, `watcher.ts`, `resource.node.ts`, `user.ts`, `auth.ts` 等）——这些比 `@ts-expect-error` 更危险
+- 18 处在 llm 测试 `.types.ts` 中（刻意的负向类型测试，非债务）
+- 4 处在其他测试文件中
+- 6 处在 SDK 生成/客户端/脚本代码中
+
+无说明的 `@ts-ignore` 没有 `@ts-expect-error` 的自清理特性：类型修复后不会报错提醒。`console/resource/resource.node.ts` 一个文件就有 3 处无说明的 `@ts-ignore`。
 ### 2.4 迁移标记
 
 | 标记类型 | 数量 |

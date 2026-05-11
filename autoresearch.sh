@@ -62,6 +62,9 @@ ANY_COUNT=$(grep -rn 'as any\|: any\b' --include='*.ts' packages/ \
 TS_IGNORE=$(grep -rn '// @ts-ignore\|// @ts-expect-error\|// @ts-nocheck' \
   --include='*.ts' packages/ --exclude-dir=node_modules --exclude-dir=.sst 2>/dev/null \
   | grep -vc 'types.gen.ts\|sdk.gen.ts' || true)
+TS_IGNORE_SRC=$({ grep -rn '// @ts-ignore\|// @ts-expect-error\|// @ts-nocheck' \
+  --include='*.ts' packages/ --exclude-dir=node_modules --exclude-dir=.sst 2>/dev/null \
+  | grep -v 'types.gen.ts\|sdk.gen.ts\|\.test\.ts\|\.types\.ts\|packages/llm/test' || true; } | wc -l)
 CATCH_ANY=$(grep -rn 'catch\s*(.*: any' --include='*.ts' packages/ \
   --exclude-dir=node_modules --exclude-dir=.sst 2>/dev/null | wc -l)
 
@@ -76,7 +79,7 @@ tee -a "$REPORT" <<EOF
 any casts (excl gen):      $ANY_COUNT
   source:                  $ANY_SRC
   test:                    $ANY_TEST
-@ts-ignore/expect-error:   $TS_IGNORE
+@ts-ignore/expect-error:   $TS_IGNORE (source: $TS_IGNORE_SRC)
 catch(e: any):             $CATCH_ANY
 EOF
 
