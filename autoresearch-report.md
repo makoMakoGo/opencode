@@ -88,7 +88,7 @@ Console zen 提供者层（3 个文件）合计 **273 次 `any`**，是最严重
 | `TODO(v2)` 双写迁移 | **15** |
 | `@deprecated` 标记 | 19 |
 
-**v1/v2 双写是最紧迫的债务**。`processor.ts` 中 13 处、`prompt.ts` 中 2 处，每处都是一个 `Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM` 守卫：
+**v1/v2 双写是最紧迫的债务**。`Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM` 在 4 个文件中共有 **20 处引用**（processor.ts 13 处, prompt.ts 2 处, compaction.ts 2 处, cli/tui 1 处），其中 15 处标记了 `TODO(v2)`：
 
 ```typescript
 // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
@@ -98,7 +98,7 @@ if (Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM) {
 // ... 然后是 v1 写入路径
 ```
 
-**影响**: 每个 bug fix 必须同步修改 v1 和 v2 两条路径。15 处双写分布在 processor 的几乎所有 case 分支中。
+**影响**: 每个 bug fix 必须同步修改 v1 和 v2 两条路径。影响范围涵盖 processor、prompt、compaction 和 TUI 插件系统。
 
 ### 2.5 Effect 迁移
 
@@ -228,10 +228,19 @@ Effect 迁移几乎完成。66 个 Service 声明、66 个 Layer.effect、58 个
 
 ### 3.1 Console 包——类型安全黑洞
 
-**位置**: `packages/console/app/src/routes/zen/util/provider/`  
-**规模**: console 包总计 321 次 `any`，其中 zen provider 层 3 个文件占 273 次
+**位置**: `packages/console/app/src/routes/zen/util/provider/` (5 个 provider 文件 + handler.ts)
+**规模**: console 包总计 321 次 `any`，其中 zen provider 目录占 277 次
 
-三个适配器（anthropic.ts: 123, openai.ts: 117, openai-compatible.ts: 33）在不同 LLM API 格式之间做转换，但**没有为外部 API 定义类型接口**，逐字段用 `as any` 访问：
+| 文件 | 行数 | `any` 次数 | 角色 |
+|------|------|-----------|------|
+| openai.ts | 760 | 123 | OpenAI 格式转换 |
+| anthropic.ts | 759 | 117 | Anthropic 格式转换 |
+| openai-compatible.ts | 502 | 33 | 通用兼容层 |
+| provider.ts | 184 | 4 | 路由分发 |
+| google.ts | 46 | 0 | Google 格式（已类型化） |
+| handler.ts | 1,132 | 4 | 请求处理 + 流式响应 |
+
+三个核心适配器（openai.ts, anthropic.ts, openai-compatible.ts）占 273 次 `any`，在不同 LLM API 格式间做转换，但**没有为外部 API 定义类型接口**：
 
 ```typescript
 if ((s as any).type !== "text") continue
@@ -239,25 +248,28 @@ if (typeof (s as any).text !== "string") continue
 msgs.push({ role: "system", content: (s as any).text })
 ```
 
-**console 包的 `any` 密度为 3.1 次/源文件**，是 opencode 包（0.77 次/源文件）的 **4 倍**。另有 8 个 `ts-ignore`。
+**console 包的 `any` 密度为 3.1 次/源文件**，是 opencode 包（0.77 次/源文件）的 **4 倍**。`google.ts` 有 0 次 `any`，说明类型化转换是可行的。
 
 **影响**: Anthropic/OpenAI API 变更时无编译期错误。生产环境只在请求失败时暴露。
 
-**建议**: 为每个外部 API 定义 Zod schema，在边界处用 `Schema.decodeUnknown` 验证，内部代码完全类型安全。这单一改动可消除 console 包 ~85% 的 `any`。
+**建议**: 参考 `google.ts`（0 次 `any`）的模式，为 Anthropic 和 OpenAI API 定义 Zod schema，用 `Schema.decodeUnknown` 在边界处验证。这可消除 console 包 ~85% 的 `any`。
 
 ### 3.2 Session v1/v2 双写——未完成的迁移
 
-**位置**: `packages/opencode/src/session/processor.ts`, `packages/opencode/src/session/prompt.ts`  
-**规模**: 15 处双写标记
+**位置**: `processor.ts` (13 处), `prompt.ts` (2 处), `compaction.ts` (2 处), `cli/tui/plugin/internal.ts` (1 处)
+**规模**: 15 处 `TODO(v2)` 标记 + 20 处 `Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM` 引用
 
-v2 架构（`packages/opencode/src/v2/`，10 个文件）与 v1 session（20 个文件）并存。每个事件处理器包含一个 `Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM` 守卫和双写路径。
+v2 架构（`packages/opencode/src/v2/`，10 个文件）与 v1 session（20 个文件）并存。影响范围超出 `processor.ts`：
+- `compaction.ts` 有 2 处未标记 `TODO(v2)` 但使用同一 flag 的双写逻辑
+- `cli/tui/plugin/internal.ts` 根据 flag 决定是否加载 `SessionV2Debug` 组件
+- 共 **4 个文件** 依赖此 flag，不是报告前面提到的 2 个
 
 **影响**:
 - `processor.ts` 每个 case 分支增长约 30%
-- `Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM` 本身就是 debt——应默认启用或移除
-- 所有 bug fix 必须同步两条路径
+- `Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM` 在 4 个文件中有 20 处引用——这是一个全局分支点
+- 所有 bug fix 必须同步 v1 和 v2 两条路径
 
-**建议**: 将 v2 event system 作为唯一路径，批量移除 v1 写入代码和 flag。
+**建议**: 将 v2 event system 作为唯一路径，批量移除 v1 写入代码、flag 及其全部 20 处引用。
 
 ### 3.3 Provider 层——混合架构
 
@@ -334,7 +346,8 @@ Layer.provide(SessionCompaction.defaultLayer),
 ### P0 — 立即行动
 
 1. **完成 v2 session 迁移**  
-   移除 `Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM` 和全部 15 处双写。当前最大维护风险。  
+   移除 `Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM` 及其全部 **20 处引用**（跨 4 个文件：processor.ts 13 处, prompt.ts 2 处, compaction.ts 2 处, cli/tui 1 处）。  
+   当前最大维护风险——每次 bug fix 必须同步 v1/v2 两条路径。  
    预期影响: 双写得分子 15→0，总分 -15。
 
 ### P1 — 短期（1-2 sprint）
