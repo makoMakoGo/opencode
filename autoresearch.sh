@@ -171,6 +171,59 @@ Files importing >15 modules: $COUPLED_COUNT
 Top fan-in modules: $HUB_MODULES
 EOF
 
+# ── 10b. Circular dependencies ───────────────────────────────
+section "Circular dependencies"
+CIRC_SCCS=$(python3 << 'PYEOF'
+import os, re, collections
+src = 'packages/opencode/src'
+graph = collections.defaultdict(set)
+for root, dirs, files in os.walk(src):
+    dirs[:] = [d for d in dirs if d != 'node_modules']
+    for f in files:
+        if not f.endswith('.ts') or f.endswith('.test.ts') or f.endswith('.d.ts'):
+            continue
+        filepath = os.path.join(root, f)
+        mod = os.path.relpath(filepath, src).replace(os.sep, '/')[:-3]
+        with open(filepath) as fh:
+            content = fh.read()
+        for m in re.finditer(r"from ['\"](@/[^'\"]+)['\"]", content):
+            graph[mod].add(m.group(1)[2:])
+        for m in re.finditer(r"from ['\"](\.\./[^'\"]+)['\"]", content):
+            base_dir = os.path.dirname(mod)
+            resolved = os.path.normpath(base_dir + '/' + m.group(1)).replace(os.sep, '/')
+            graph[mod].add(resolved)
+        for m in re.finditer(r"from ['\"](\./[^'\"]+)['\"]", content):
+            base_dir = os.path.dirname(mod)
+            resolved = os.path.normpath(base_dir + '/' + m.group(1)).replace(os.sep, '/')
+            graph[mod].add(resolved)
+index_counter = [0]; stk = []; on_stk = set(); idx_map = {}; low_map = {}; result = []
+def sc(v):
+    idx_map[v] = index_counter[0]; low_map[v] = index_counter[0]; index_counter[0] += 1
+    stk.append(v); on_stk.add(v)
+    for w in graph.get(v, set()):
+        if w not in idx_map: sc(w); low_map[v] = min(low_map[v], low_map[w])
+        elif w in on_stk: low_map[v] = min(low_map[v], idx_map[w])
+    if low_map[v] == idx_map[v]:
+        comp = []
+        while True:
+            w = stk.pop(); on_stk.discard(w); comp.append(w)
+            if w == v: break
+        if len(comp) > 1: result.append(comp)
+for v in sorted(graph.keys()):
+    if v not in idx_map: sc(v)
+big = max((len(s) for s in result), default=0)
+print(f"{len(result)} {big}")
+PYEOF
+)
+SCC_COUNT=$(echo "$CIRC_SCCS" | awk '{print $1}')
+SCC_LARGEST=$(echo "$CIRC_SCCS" | awk '{print $2}')
+metric scc_count $SCC_COUNT
+metric scc_largest $SCC_LARGEST
+tee -a "$REPORT" <<EOF
+Circular dep SCCs (>1 module): $SCC_COUNT
+Largest SCC:                   $SCC_LARGEST modules
+EOF
+
 # ── 11. Test quality ───────────────────────────────────────
 section "Test quality"
 FRAGILE_TESTS=$(find packages -name '*.test.ts' -not -path '*/node_modules/*' \

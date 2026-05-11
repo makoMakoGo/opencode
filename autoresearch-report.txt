@@ -49,6 +49,12 @@ session:85
 config:60
 provider:51
 
+=== Circular dependencies ===
+METRIC scc_count=4
+METRIC scc_largest=20
+Circular dep SCCs (>1 module): 4
+Largest SCC:                   20 modules
+
 === Test quality ===
 Fragile tests (>10 any):    5
 Giant test files (>1K LOC): 16

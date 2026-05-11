@@ -164,6 +164,15 @@ Effect 迁移覆盖了核心业务逻辑层（session、provider、project、sto
 
 `app-runtime.ts` 作为全局组装点，50 个导入是合理的（它负责将所有 Layer 连接在一起）。`prompt.ts` 的 23 个导入则表明它承担了过多职责。
 
+**循环依赖**（Tarjan 强连通分量分析，opencode 包 346 个模块）：
+
+- **SCC 1（20 模块）**：跨越 8 个顶层目录（config, lsp, session, provider, account, project, effect, storage），55 条内部边。最短环路：`lsp/lsp → project/instance-context → project/project → session/session.sql → session/message-v2 → lsp/lsp`
+- **SCC 2（3 模块）**：`session/prompt ↔ tool/registry ↔ tool/task`
+- **SCC 3（2 模块）**：`agent/agent ↔ tool/truncate`
+- **SCC 4（2 模块）**：`cli/cmd/tui/context/editor ↔ cli/cmd/tui/context/editor-zed`
+
+SCC 1 是架构级问题——`config/config` 和 `lsp/lsp` 作为核心基础设施模块，不应依赖 session 或 project 层。20 个模块的循环意味着这些模块不能被独立理解、测试或替换。
+
 ### 2.7 测试质量
 
 | 指标 | 数量 |
