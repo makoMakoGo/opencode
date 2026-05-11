@@ -160,6 +160,21 @@ Effect 迁移几乎完成。66 个 Service 声明、66 个 Layer.effect、58 个
 
 `transform.test.ts`（3,688 行，111 次 any）是最大的测试文件，也是 `any` 使用最多的测试。这暗示测试在复制而非调用被测代码的逻辑。
 
+**运行时验证**（`bun test --no-preload`，2026-05-11）：
+
+| 包 | 测试数 | 失败 | 跳过 | 通过率 |
+|----|--------|------|------|--------|
+| opencode | 2,621 | 8 | 20 | 99.7% |
+| llm | 217 | 3 | 28 | 98.6% |
+| core | 85 | 0 | 0 | 100% |
+| **合计** | **2,923** | **11** | 48 | **99.6%** |
+
+**opencode 8 个失败**：5 个 skill discovery 测试（`.claude/skills/` 和 `.agents/skills/` 目录发现逻辑）、1 个 HTTP workspace proxy 超时、2 个其他。
+
+**llm 3 个失败**：全部在 OpenAI route options mapping（`maps OpenAI provider options to Chat/Responses options`）。这可能与最近的 cache-policy 变更相关（新增的 `cache-policy.ts` 和 provider options 变更）。
+
+99.6% 的通过率表明测试套件整体健康，失败的 11 个测试集中在两个特定功能区域。llm 的 3 个失败可能需要关注——它们涉及 provider options 的核心映射逻辑。
+
 ### 2.8 包级别债务热力图
 
 | 包 | 源文件 | 测试 | `any` | TODO | @deprecated | 巨型文件 | ts-ignore |
@@ -299,6 +314,7 @@ Layer.provide(SessionCompaction.defaultLayer),
 | TODO 标记少 | ✅ 控制良好 | 仅 18 个真实 TODO |
 | 模块耦合 | ✅ 整体可控 | 仅 3 个高耦合文件 |
 | llm 包类型安全 | ✅ 负向类型测试 | 18 个 ts-ignore 全是刻意编写的类型守卫测试 |
+| 测试运行时 | ✅ 99.6% 通过 | 2,923 tests, 11 fail |
 | Effect 依赖注入 | ✅ 完整体系 | 66 Service + 66 Layer + 58 defaultLayer |
 
 **需要区分的"伪债务"**（看起来像债务但实际合理）：
