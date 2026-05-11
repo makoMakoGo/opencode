@@ -160,7 +160,31 @@ Effect 迁移几乎完成。66 个 Service 声明、66 个 Layer.effect、58 个
 
 `transform.test.ts`（3,688 行，111 次 any）是最大的测试文件，也是 `any` 使用最多的测试。这暗示测试在复制而非调用被测代码的逻辑。
 
-### 2.8 测试覆盖盲区
+### 2.8 包级别债务热力图
+
+| 包 | 源文件 | 测试 | `any` | TODO | @deprecated | 巨型文件 | ts-ignore |
+|----|--------|------|-------|------|-------------|---------|-----------|
+| **opencode** | 434 | 227 | **335** | **16** | 8 | **41** | 16 |
+| **console** | 104 | 3 | **321** | 0 | 0 | 6 | 8 |
+| llm | 52 | 25 | 0 | 0 | 0 | 6 | 18 |
+| app | 93 | 56 | 3 | 0 | 0 | 4 | 1 |
+| ui | 45 | 5 | 2 | 0 | 0 | 3 | 0 |
+| core | 31 | 8 | 20 | 0 | 0 | 2 | 2 |
+| desktop | 35 | 2 | 2 | 0 | 0 | 1 | 0 |
+| plugin | 6 | 0 | 8 | 0 | **11** | 2 | 1 |
+| http-recorder | 9 | 1 | 0 | 0 | 0 | 1 | 0 |
+| enterprise | 3 | 2 | 3 | 0 | 0 | 1 | 0 |
+| sdk | 92 gen | 0 | 13 | 2 | 0 | 1 | 4 |
+
+**关键发现**:
+
+- **console 包的 `any` 密度是 opencode 的 4.4 倍**（321/104 vs 335/434），几乎全部集中在 zen provider 的 3 个文件中
+- **opencode 包是唯一的 TODO 来源**（16/18），双写迁移和 provider 层注释全在此包
+- **plugin 包的 11 个 @deprecated 是唯一来源**——废弃的 TUI 插件 API
+- **llm 包 18 个 ts-ignore** 是最多的，但没有 `any` 使用（0），说明它用 ts-ignore 做临时绕过而非 any
+- **app 包有 182 个非空断言 (`!`)**, opencode 有 57 个，是另一类类型安全隐患
+
+### 2.9 测试覆盖盲区
 
 **5 个包有源代码但完全没有测试：**
 
@@ -172,7 +196,7 @@ Effect 迁移几乎完成。66 个 Service 声明、66 个 Layer.effect、58 个
 | slack | 1 | 低 |
 | script | 1 | 低 |
 
-### 2.9 已废弃 API
+### 2.10 已废弃 API
 
 19 个 `@deprecated` 标记：
 - **config**: 4 个废弃字段（`share`, `agent`, `maxSteps`, `layout`）
@@ -183,12 +207,12 @@ Effect 迁移几乎完成。66 个 Service 声明、66 个 Layer.effect、58 个
 
 ## 3. 关键债务领域详细分析
 
-### 3.1 Console Zen 提供者层——类型安全黑洞
+### 3.1 Console 包——类型安全黑洞
 
 **位置**: `packages/console/app/src/routes/zen/util/provider/`  
-**规模**: 3 个文件, ~2,000 行, 273 次 `any`
+**规模**: console 包总计 321 次 `any`，其中 zen provider 层 3 个文件占 273 次
 
-三个适配器（anthropic.ts, openai.ts, openai-compatible.ts）在不同 LLM API 格式之间做转换，但**没有为外部 API 定义类型接口**，逐字段用 `as any` 访问：
+三个适配器（anthropic.ts: 123, openai.ts: 117, openai-compatible.ts: 33）在不同 LLM API 格式之间做转换，但**没有为外部 API 定义类型接口**，逐字段用 `as any` 访问：
 
 ```typescript
 if ((s as any).type !== "text") continue
@@ -196,9 +220,11 @@ if (typeof (s as any).text !== "string") continue
 msgs.push({ role: "system", content: (s as any).text })
 ```
 
+**console 包的 `any` 密度为 3.1 次/源文件**，是 opencode 包（0.77 次/源文件）的 **4 倍**。另有 8 个 `ts-ignore`。
+
 **影响**: Anthropic/OpenAI API 变更时无编译期错误。生产环境只在请求失败时暴露。
 
-**建议**: 为每个外部 API 定义 Zod schema，在边界处用 `Schema.decodeUnknown` 验证，内部代码完全类型安全。
+**建议**: 为每个外部 API 定义 Zod schema，在边界处用 `Schema.decodeUnknown` 验证，内部代码完全类型安全。这单一改动可消除 console 包 ~85% 的 `any`。
 
 ### 3.2 Session v1/v2 双写——未完成的迁移
 

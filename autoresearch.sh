@@ -216,6 +216,31 @@ No-test packages:   $NOTEST_PTS/5
 Total:              $DEBT_SCORE_CAPPED/100
 EOF
 
+# ── 13. Per-package debt breakdown ──────────────────────────
+section "Per-package breakdown"
+{
+  echo "pkg src test any todo deprec god500 ts-ignore"
+  for pkg in packages/*/; do
+    name=$(basename "$pkg")
+    src=$({ find "$pkg/src" "$pkg/app/src" "$pkg/core/src" -name '*.ts' -not -name '*.test.ts' -not -name '*.d.ts' 2>/dev/null || true; } | wc -l)
+    tests=$({ find "$pkg" -name '*.test.ts' -not -path '*/node_modules/*' 2>/dev/null || true; } | wc -l)
+    any_c=$({ grep -rn 'as any\|: any\b' --include='*.ts' "$pkg" --exclude-dir=node_modules --exclude-dir=.sst 2>/dev/null \
+      | grep -vc 'types.gen.ts\|sdk.gen.ts' || true; })
+    todo_c=$({ grep -rn 'TODO:\|FIXME:\|HACK:\|XXX:' --include='*.ts' "$pkg" --exclude-dir=node_modules 2>/dev/null \
+      | grep -vc 'i18n/\|prompt.example' || true; })
+    dep_c=$({ grep -rn '@deprecated' --include='*.ts' "$pkg" --exclude-dir=node_modules 2>/dev/null \
+      | grep -vc 'types.gen.ts\|sdk.gen.ts' || true; })
+    god_c=$({ find "$pkg" -name '*.ts' -not -path '*/node_modules/*' -not -name '*.test.ts' \
+      -not -name '*.d.ts' -not -name 'types.gen.ts' -not -name 'sdk.gen.ts' -not -path '*/i18n/*' \
+      -exec wc -l {} + 2>/dev/null || true; } | awk '$1>500{c++}END{print c+0}')
+    tsig_c=$({ grep -rn '@ts-ignore\|@ts-expect-error\|@ts-nocheck' --include='*.ts' "$pkg" --exclude-dir=node_modules 2>/dev/null \
+      | grep -vc 'types.gen.ts\|sdk.gen.ts' || true; })
+    if [ "$src" -gt 0 ]; then
+      echo "$name $src $tests $any_c $todo_c $dep_c $god_c $tsig_c"
+    fi
+  done
+} | column -t | tee -a "$REPORT"
+
 # ── Emit primary + secondary metrics ────────────────────────
 metric "debt_score" "$DEBT_SCORE_CAPPED"
 metric "god_files" "$GOD_COUNT"
