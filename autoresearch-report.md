@@ -101,6 +101,10 @@ OpenCode 是一个 ~186K 行 TypeScript 单仓项目，包含 20 个包。核心
 - 6 处在 SDK 生成/客户端/脚本代码中
 
 无说明的 `@ts-ignore` 没有 `@ts-expect-error` 的自清理特性：类型修复后不会报错提醒。`console/resource/resource.node.ts` 一个文件就有 3 处无说明的 `@ts-ignore`。
+
+**`@ts-nocheck`**（禁用整个文件类型检查，2 处）：
+- `packages/opencode/specs/v2/api.ts`（67 行）：SDK 使用示例。**作为公开 API 文档，应保证类型正确**——`@ts-nocheck` 意味着示例可能已经类型失效。
+- `packages/console/mail/emails/styles.ts`（91 行）：邮件样式常量，低风险，但应改为 `@ts-expect-error`。
 ### 2.4 迁移标记
 
 | 标记类型 | 数量 |
