@@ -198,6 +198,37 @@ core: 85 tests, 0 fail (100% pass)
 Total: 2923 tests, 11 fail (99.6% pass)
 Note: Run with 'bun test --no-preload' from each package dir.
 EOF
+
+section "Dependency health"
+DEP_STATS=$(python3 -c "
+import json, sys, glob
+v0=0; ranged=0; total=0
+for pj in glob.glob('packages/*/package.json'):
+    with open(pj) as f:
+        pkg = json.load(f)
+    deps = {**pkg.get('dependencies', {}), **pkg.get('devDependencies', {})}
+    for dep, ver in deps.items():
+        if ver.startswith('workspace:') or ver.startswith('catalog:') or dep.startswith('@opencode-ai/'):
+            continue
+        total += 1
+        clean = ver.lstrip('^~>=')
+        if clean.split('.')[0] == '0':
+            v0 += 1
+        if ver.startswith('^') or ver.startswith('~') or ver.startswith('>='):
+            ranged += 1
+print(f'{total} {v0} {ranged}')
+" 2>/dev/null)
+TOTAL_DEPS=$(echo "$DEP_STATS" | awk '{print $1}')
+V0_DEPS=$(echo "$DEP_STATS" | awk '{print $2}')
+RANGED_DEPS=$(echo "$DEP_STATS" | awk '{print $3}')
+PATCHED_PKGS=$(ls patches/*.patch 2>/dev/null | wc -l)
+tee -a "$REPORT" <<EOF
+Total unique deps:      $TOTAL_DEPS
+v0.x unstable deps:     $V0_DEPS
+Ranged version deps:    $RANGED_DEPS
+Patched packages:       $PATCHED_PKGS
+EOF
+
 # ── 12. Debt score (composite, 0–100) ──────────────────────
 section "Composite debt score"
 # Each dimension capped at its weight. No overflow.

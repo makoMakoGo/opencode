@@ -64,6 +64,12 @@ core: 85 tests, 0 fail (100% pass)
 Total: 2923 tests, 11 fail (99.6% pass)
 Note: Run with 'bun test --no-preload' from each package dir.
 
+=== Dependency health ===
+Total unique deps:      191
+v0.x unstable deps:     19
+Ranged version deps:    22
+Patched packages:       4
+
 === Composite debt score ===
 God files (1K):     15.0/15
 Any casts:          15.0/15

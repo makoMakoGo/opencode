@@ -255,6 +255,27 @@ Effect 迁移覆盖了核心业务逻辑层（session、provider、project、sto
 - **plugin TUI API**: 10+ 个废弃方法（`registerKeymap`, `dispatchCommand` 等）
 - **session**: 2 个废弃字段（tool/permissions 合并）
 
+
+### 2.11 依赖健康度
+
+| 指标 | 数量 |
+|------|------|
+| 唯一外部依赖 | **164** |
+| 使用范围版本（^, ~） | 19 (12%) |
+| v0.x 不稳定依赖 | **19** |
+| 补丁覆盖的包 | 4 |
+| 版本冲突 | 4 |
+
+**v0.x 不稳定依赖中的关键项**：
+- `bun-pty@0.4.8` — PTY 核心，API 随时可能变更
+- `@agentclientprotocol/sdk@0.21.0` — ACP 协议 SDK
+- `partial-json@0.1.7` — 流式 JSON 解析
+- `@solidjs/router@0.15.4` — UI 路由，SolidJS 生态主力包
+- `web-tree-sitter@0.25.10` — 代码解析
+
+**补丁覆盖**表明上游有阻塞性 bug：`solid-js@1.9.10`、`photon-node@0.3.4`、`standard-openapi@0.2.9`、`@npmcli/agent@4.0.0`。
+
+**版本冲突**：`@shikijs/transformers`（3.9.2 vs 3.20.0）、`minimatch`（10.0.3 vs 10.2.5）、`aws4fetch`（pinned vs ranged）、`@solid-primitives/resize-observer`（2.1.3 vs 2.1.5）。`bun.lock` 会解析为单一版本，但范围版本声明不一致是维护隐患。
 ---
 
 ## 3. 关键债务领域详细分析
