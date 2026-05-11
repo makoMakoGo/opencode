@@ -169,11 +169,14 @@ Effect 迁移几乎完成。66 个 Service 声明、66 个 Layer.effect、58 个
 | core | 85 | 0 | 0 | 100% |
 | **合计** | **2,923** | **11** | 48 | **99.6%** |
 
-**opencode 8 个失败**：5 个 skill discovery 测试（`.claude/skills/` 和 `.agents/skills/` 目录发现逻辑）、1 个 HTTP workspace proxy 超时、2 个其他。
+**opencode 8 个失败**：
+- 5 个 skill discovery：`.claude/skills/` 和 `.agents/skills/` 目录扫描返回 0 结果（期望 1-2）。**疑似回归**——发现代码变更后测试未同步。
+- 1 个 HTTP workspace proxy：超时测试，预期返回 500 但收到其他状态码。
+- 2 个 provider HttpApi OAuth 测试。
 
-**llm 3 个失败**：全部在 OpenAI route options mapping（`maps OpenAI provider options to Chat/Responses options`）。这可能与最近的 cache-policy 变更相关（新增的 `cache-policy.ts` 和 provider options 变更）。
+**llm 3 个失败**：全部因缺少 `OPENAI_API_KEY` 环境变量导致 auth schema 校验失败。**非回归**——测试基础设施问题，需要 mock auth 层。
 
-99.6% 的通过率表明测试套件整体健康，失败的 11 个测试集中在两个特定功能区域。llm 的 3 个失败可能需要关注——它们涉及 provider options 的核心映射逻辑。
+99.6% 的通过率表明测试套件整体健康。但 llm 的 auth mock 缺失和 opencode 的 skill discovery 回归是具体需要修复的问题。
 
 ### 2.8 包级别债务热力图
 
@@ -346,12 +349,15 @@ Layer.provide(SessionCompaction.defaultLayer),
 
 ### P2 — 中期
 
-4. **修复 llm 包 3 个 OpenAI options mapping 失败**  
-   可能与最近的 cache-policy 变更相关（`cache-policy.ts` 新增，provider options 结构变更）。  
-   运行时证据表明存在回归。
+4. **修复 llm 包 3 个 OpenAI route 测试失败**  
+   **根因**: 测试缺少 `OPENAI_API_KEY` 环境变量，导致 auth schema 校验失败（`SchemaError(Invalid data <redacted> at ["OPENAI_API_KEY"])`）。  
+   **非回归**——这是测试基础设施问题，需要 mock auth 层或注入测试 key。  
+   涉及文件: `packages/llm/test/route/openai-chat.test.ts`, `openai-responses.test.ts`
 
-5. **修复 opencode 5 个 skill discovery 失败**  
-   `.claude/skills/` 和 `.agents/skills/` 目录发现逻辑测试失败，可能是目录结构变更未同步。
+5. **修复 opencode 5 个 skill discovery 测试失败**  
+   **根因**: `skill.all()` 返回 0 个结果（期望 1-2 个）。测试创建 `.claude/skills/` 目录并写入 `SKILL.md`，但发现逻辑未扫描到。  
+   **疑似回归**——发现代码在 `wip` 提交后变更，但测试未同步更新。  
+   涉及文件: `packages/opencode/test/skill/skill.test.ts` → `packages/opencode/src/skill/discovery.ts`
 
 6. **拆分 prompt.ts**（2,101 行 → 4-5 个 service）
 7. **拆分 provider.ts**（1,767 行 → 3 个文件）

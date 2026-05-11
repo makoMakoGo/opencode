@@ -178,11 +178,11 @@ EOF
 section "Test runtime health"
 tee -a "$REPORT" <<'EOF'
 opencode: 2621 tests, 8 fail (99.7% pass), 20 skip
-  - 5 skill discovery failures (skill test infrastructure)
-  - 1 HTTP workspace proxy timeout
-  - 2 other
+  - 5 skill discovery: all() returns 0, expected 1-2 (suspected regression)
+  - 1 HTTP workspace proxy: timeout test, expected 500
+  - 2 provider HttpApi OAuth tests
 llm: 217 tests, 3 fail (98.6% pass), 28 skip
-  - 3 OpenAI route options mapping failures
+  - 3 OpenAI route: missing OPENAI_API_KEY (auth schema error, not regression)
 core: 85 tests, 0 fail (100% pass)
 Total: 2923 tests, 11 fail (99.6% pass)
 Note: Run with 'bun test --no-preload' from each package dir.
