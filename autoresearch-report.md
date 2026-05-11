@@ -346,16 +346,22 @@ Layer.provide(SessionCompaction.defaultLayer),
 
 ### P2 — 中期
 
-4. **拆分 prompt.ts**（2,101 行 → 4-5 个 service）
-5. **拆分 provider.ts**（1,767 行 → 3 个文件）
-6. **添加 plugin 包测试**（6 个源文件，0 个测试）
-7. **修复 transform.test.ts**（3,688 行，111 次 any → 拆分+类型化）
+4. **修复 llm 包 3 个 OpenAI options mapping 失败**  
+   可能与最近的 cache-policy 变更相关（`cache-policy.ts` 新增，provider options 结构变更）。  
+   运行时证据表明存在回归。
 
+5. **修复 opencode 5 个 skill discovery 失败**  
+   `.claude/skills/` 和 `.agents/skills/` 目录发现逻辑测试失败，可能是目录结构变更未同步。
+
+6. **拆分 prompt.ts**（2,101 行 → 4-5 个 service）
+7. **拆分 provider.ts**（1,767 行 → 3 个文件）
+8. **添加 plugin 包测试**（6 个源文件，0 个测试）
+9. **修复 transform.test.ts**（3,688 行，111 次 any → 拆分+类型化）
 ### P3 — 持续改善
 
-8. **深嵌套重构**（3,693 行 >4 级缩进）
-9. **Copilot SDK 适配器简化**（429 行深嵌套）
-10. **`app-runtime.ts` 自动化组装**（减少手动耦合点）
+10. **深嵌套重构**（3,693 行 >4 级缩进）
+11. **Copilot SDK 适配器简化**（429 行深嵌套）
+12. **`app-runtime.ts` 自动化组装**（减少手动耦合点）
 
 ---
 
