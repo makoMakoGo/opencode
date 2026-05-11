@@ -258,7 +258,7 @@ SCC 1 是架构级问题——`config/config` 和 `lsp/lsp` 作为核心基础�
 - **llm 包 18 个 ts-ignore** 全部在类型测试文件（`auth-options.types.ts`, `provider.types.ts`）中——这些是**刻意编写的负向类型测试**，验证错误类型被拒绝。不是债务，而是良好的类型安全实践。
 - **core 包 20 次 `any`** 主要在 `log.ts`（日志接口，本质上是 `any` 类型的）和 `effect-zod.ts`（Effect 内部交互）。属于基础设施层面，难以避免。
 
-- 更正（排除 GraphQL 语法 `String!`/`Int!`）：app 包实际 8 个非空断言，opencode 包 114 个（集中在 5 个 CLI 文件中，占 39%）。详见 §2.12。
+- **非空断言**：opencode 114 个（集中在 github.ts 14, win32.ts 13 等 5 个 CLI 文件），console 18 个。详见 §2.12。
 ### 2.9 测试覆盖盲区
 
 **5 个包有源代码但完全没有测试：**
@@ -454,11 +454,11 @@ Layer.provide(SessionCompaction.defaultLayer),
 
 2. **Console zen 提供者层类型化**  
    为 Anthropic/OpenAI API 请求体定义 Zod schema，消除 273 处 `any`。  
-   预期影响: any 得分子 15→5，总分 -10。
+   预期影响: any 从 717→444，得分 15→13.3（-1.7 分）。
 
 3. **清理废弃 Plugin TUI API**  
    10+ 个废弃方法可批量移除（提供外部插件迁移窗口）。  
-   预期影响: deprecated 得分 10→5，总分 -5。
+   预期影响: deprecated 从 19→8，得分 10→5.3（-4.7 分）。
 
 ### P2 — 中期
 
