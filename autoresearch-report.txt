@@ -37,18 +37,33 @@ v2 session files:  10
 
 === Console zen provider type safety ===
 anthropic.ts: 117 any-uses in 759 lines
+zen provider total any: 273
+
+=== Coupling ===
+Files importing >15 modules: 3
+Top fan-in modules: util:123
+effect:101
+session:85
+config:60
+provider:51
+
+=== Test quality ===
+Fragile tests (>10 any):    5
+Giant test files (>1K LOC): 16
 
 === Composite debt score ===
-God files:      11.9/20
-Any casts:      28.7/20
-Markers:        9.0/15
-Dual-write:     15.0/15
-No-test pkgs:   10.0/10
-Deep nesting:   9.2/10
-Deprecated:     9.5/10
+God files (1K):     15.0/15
+Any casts:          15.0/15
+Dual-write:         15.0/15
+Markers:            7.2/10
+Deep nesting:       10.0/10
+Coupling:           6.0/10
+Deprecated:         10.0/10
+Test quality:       10.0/10
+No-test packages:   5.0/5
 ─────────────────────────
-Total:          93.3/100
-METRIC debt_score=93.3
+Total:              93.2/100
+METRIC debt_score=93.2
 METRIC god_files=57
 METRIC god_files_1k=16
 METRIC any_casts=717
@@ -63,3 +78,7 @@ METRIC raw_async_files=1
 METRIC total_src_files=987
 METRIC total_test_files=329
 METRIC source_lines=185865
+METRIC coupled_files=3
+METRIC fragile_tests=5
+METRIC giant_tests=16
+METRIC zen_any_total=273

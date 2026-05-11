@@ -26,7 +26,7 @@ TOTAL_SRC=$(count_ts -not -name '*.test.ts' -not -name '*.d.ts')
 TOTAL_TEST=$(count_ts -name '*.test.ts')
 TOTAL_LINES=$(count_lines -not -name '*.test.ts' -not -name '*.d.ts')
 TEST_LINES=$(count_lines -name '*.test.ts')
-TOTAL_FILES=$(find packages -name '*.ts' -not -path '*/node_modules/*' -not -path '*/.sst/*' | wc -l)
+TOTAL_FILES=$({ find packages -name '*.ts' -not -path '*/node_modules/*' -not -path '*/.sst/*' 2>/dev/null || true; } | wc -l)
 
 tee -a "$REPORT" <<EOF
 Source files:         $TOTAL_SRC
@@ -90,9 +90,9 @@ EOF
 
 # ── 5. Effect migration ─────────────────────────────────────
 section "Effect migration"
-EFFECT_FILES=$(grep -rl 'Effect\.\|yield\*' --include='*.ts' packages/opencode/src/ 2>/dev/null | wc -l)
-RAW_ASYNC=$(grep -rl 'async function\|Promise<' --include='*.ts' packages/opencode/src/ 2>/dev/null \
-  | grep -v -l 'Effect\.' 2>/dev/null | wc -l)
+EFFECT_FILES=$({ grep -rl 'Effect\.\|yield\*' --include='*.ts' packages/opencode/src/ 2>/dev/null || true; } | wc -l)
+RAW_ASYNC=$({ grep -rl 'async function\|Promise<' --include='*.ts' packages/opencode/src/ 2>/dev/null \
+  | grep -v -l 'Effect\.' 2>/dev/null || true; } | wc -l)
 
 tee -a "$REPORT" <<EOF
 Effect-ified files:     $EFFECT_FILES
@@ -101,7 +101,7 @@ EOF
 
 # ── 6. Deep nesting (>4 indent levels) ──────────────────────
 section "Deep nesting"
-DEEP_LINES=$(grep -rPn '^\s{16,}' --include='*.ts' packages/opencode/src/ 2>/dev/null | wc -l)
+DEEP_LINES=$({ grep -rPn '^\s{16,}' --include='*.ts' packages/opencode/src/ 2>/dev/null || true; } | wc -l)
 tee -a "$REPORT" <<EOF
 Lines indented >4 levels: $DEEP_LINES
 EOF
@@ -123,8 +123,8 @@ done
 
 # ── 8. v1/v2 dual path ──────────────────────────────────────
 section "v1/v2 dual architecture"
-V1_SESSION=$(find packages/opencode/src/session -maxdepth 1 -name '*.ts' 2>/dev/null | wc -l)
-V2_SESSION=$(find packages/opencode/src/v2 -name '*.ts' 2>/dev/null | wc -l)
+V1_SESSION=$({ find packages/opencode/src/session -maxdepth 1 -name '*.ts' 2>/dev/null || true; } | wc -l)
+V2_SESSION=$({ find packages/opencode/src/v2 -name '*.ts' 2>/dev/null || true; } | wc -l)
 tee -a "$REPORT" <<EOF
 v1 session files:  $V1_SESSION
 v2 session files:  $V2_SESSION
@@ -134,42 +134,86 @@ EOF
 section "Console zen provider type safety"
 ZEN_ANY=$(grep -c 'as any\|: any' packages/console/app/src/routes/zen/util/provider/anthropic.ts 2>/dev/null || echo 0)
 ZEN_LINES=$(wc -l < packages/console/app/src/routes/zen/util/provider/anthropic.ts 2>/dev/null || echo 0)
+ZEN_ANY_TOTAL=0
+for f in packages/console/app/src/routes/zen/util/provider/anthropic.ts \
+         packages/console/app/src/routes/zen/util/provider/openai.ts \
+         packages/console/app/src/routes/zen/util/provider/openai-compatible.ts; do
+  c=$(grep -c 'as any\|: any' "$f" 2>/dev/null || echo 0)
+  ZEN_ANY_TOTAL=$((ZEN_ANY_TOTAL + c))
+done
 tee -a "$REPORT" <<EOF
 anthropic.ts: $ZEN_ANY any-uses in $ZEN_LINES lines
+zen provider total any: $ZEN_ANY_TOTAL
 EOF
 
-# ── 10. Debt score (composite, 0–100) ──────────────────────
+# ── 10. Coupling analysis ──────────────────────────────────
+section "Coupling"
+COUPLED_COUNT=$(find packages/opencode/src -maxdepth 2 -name '*.ts' -not -path '*/node_modules/*' \
+  -exec grep -cP "from ['\"]@/" {} + 2>/dev/null | awk -F: '$2>15{c++}END{print c+0}')
+
+HUB_MODULES=$({ grep -rn "from ['\"]@/" --include='*.ts' packages/opencode/src/ 2>/dev/null \
+  | grep -oP "from ['\"]@/([^/']+)" || true; } \
+  | sed "s/from ['\"]@\\///" | sort | uniq -c | sort -rn | head -5 | awk '{print $2":"$1}')
+
+tee -a "$REPORT" <<EOF
+Files importing >15 modules: $COUPLED_COUNT
+Top fan-in modules: $HUB_MODULES
+EOF
+
+# ── 11. Test quality ───────────────────────────────────────
+section "Test quality"
+FRAGILE_TESTS=$(find packages -name '*.test.ts' -not -path '*/node_modules/*' \
+  -exec grep -c 'as any\|: any' {} + 2>/dev/null | awk -F: '$2>10{c++}END{print c+0}')
+
+GIANT_TESTS=$(find packages -name '*.test.ts' -not -path '*/node_modules/*' \
+  -exec wc -l {} + 2>/dev/null | awk '$1>1000{c++}END{print c+0}')
+
+tee -a "$REPORT" <<EOF
+Fragile tests (>10 any):    $FRAGILE_TESTS
+Giant test files (>1K LOC): $GIANT_TESTS
+EOF
+
+# ── 12. Debt score (composite, 0–100) ──────────────────────
 section "Composite debt score"
-# Weighted: lower is better
-#   god files:     up to 20 pts
-#   any casts:     up to 20 pts (per 100)
-#   markers:       up to 15 pts (per 10)
-#   dual-write:    up to 15 pts (per 5)
-#   no-test pkgs:  up to 10 pts
-#   deep nesting:  up to 10 pts (per 1000)
-#   deprecated:    up to 10 pts (per 5)
+# Each dimension capped at its weight. No overflow.
+#   god files (1K): 15 pts  — baseline: 10 files over 1K lines
+#   any casts:      15 pts  — baseline: 500 any casts
+#   dual-write:     15 pts  — baseline: 10 markers
+#   markers:        10 pts  — baseline: 25 TODO/FIXME
+#   deep nesting:   10 pts  — baseline: 3000 deep lines
+#   coupling:       10 pts  — baseline: 5 highly-coupled files
+#   deprecated:     10 pts  — baseline: 15 deprecated markers
+#   test quality:   10 pts  — baseline: 3 fragile + 5 giant tests
+#   no-test pkgs:    5 pts  — baseline: 3 packages
 
-GOD_PTS=$(awk "BEGIN{printf \"%.1f\", ($GOD_COUNT/96)*20}")
-ANY_PTS=$(awk "BEGIN{printf \"%.1f\", ($ANY_COUNT/500)*20}")
-MARKER_PTS=$(awk "BEGIN{printf \"%.1f\", ($REAL_TODOS/30)*15}")
-DUAL_PTS=$(awk "BEGIN{printf \"%.1f\", ($DUAL_WRITE/15)*15}")
-NOTEST_PTS=$(awk "BEGIN{printf \"%.1f\", ($NO_TEST_COUNT/5)*10}")
-DEEP_PTS=$(awk "BEGIN{printf \"%.1f\", ($DEEP_LINES/4000)*10}")
-DEP_PTS=$(awk "BEGIN{printf \"%.1f\", ($DEPRECATED/20)*10}")
+clamp() { awk "BEGIN{v=$1*$3/$2; if(v>$3) v=$3; printf \"%.1f\", v}"; }
 
-DEBT_SCORE=$(awk "BEGIN{printf \"%.1f\", $GOD_PTS+$ANY_PTS+$MARKER_PTS+$DUAL_PTS+$NOTEST_PTS+$DEEP_PTS+$DEP_PTS}")
+GOD_PTS=$(clamp "$GOD_1K" 10 15)
+ANY_PTS=$(clamp "$ANY_COUNT" 500 15)
+DUAL_PTS=$(clamp "$DUAL_WRITE" 10 15)
+MARKER_PTS=$(clamp "$REAL_TODOS" 25 10)
+DEEP_PTS=$(clamp "$DEEP_LINES" 3000 10)
+COUPLE_PTS=$(clamp "$COUPLED_COUNT" 5 10)
+DEP_PTS=$(clamp "$DEPRECATED" 15 10)
+FRAGILE_TOTAL=$((FRAGILE_TESTS + GIANT_TESTS))
+TESTQ_PTS=$(clamp "$FRAGILE_TOTAL" 8 10)
+NOTEST_PTS=$(clamp "$NO_TEST_COUNT" 3 5)
+
+DEBT_SCORE=$(awk "BEGIN{printf \"%.1f\", $GOD_PTS+$ANY_PTS+$DUAL_PTS+$MARKER_PTS+$DEEP_PTS+$COUPLE_PTS+$DEP_PTS+$TESTQ_PTS+$NOTEST_PTS}")
 DEBT_SCORE_CAPPED=$(awk "BEGIN{printf \"%.1f\", ($DEBT_SCORE>100)?100:$DEBT_SCORE}")
 
 tee -a "$REPORT" <<EOF
-God files:      $GOD_PTS/20
-Any casts:      $ANY_PTS/20
-Markers:        $MARKER_PTS/15
-Dual-write:     $DUAL_PTS/15
-No-test pkgs:   $NOTEST_PTS/10
-Deep nesting:   $DEEP_PTS/10
-Deprecated:     $DEP_PTS/10
+God files (1K):     $GOD_PTS/15
+Any casts:          $ANY_PTS/15
+Dual-write:         $DUAL_PTS/15
+Markers:            $MARKER_PTS/10
+Deep nesting:       $DEEP_PTS/10
+Coupling:           $COUPLE_PTS/10
+Deprecated:         $DEP_PTS/10
+Test quality:       $TESTQ_PTS/10
+No-test packages:   $NOTEST_PTS/5
 ─────────────────────────
-Total:          $DEBT_SCORE_CAPPED/100
+Total:              $DEBT_SCORE_CAPPED/100
 EOF
 
 # ── Emit primary + secondary metrics ────────────────────────
@@ -188,6 +232,10 @@ metric "raw_async_files" "$RAW_ASYNC"
 metric "total_src_files" "$TOTAL_SRC"
 metric "total_test_files" "$TOTAL_TEST"
 metric "source_lines" "$TOTAL_LINES"
+metric "coupled_files" "$COUPLED_COUNT"
+metric "fragile_tests" "$FRAGILE_TESTS"
+metric "giant_tests" "$GIANT_TESTS"
+metric "zen_any_total" "$ZEN_ANY_TOTAL"
 
 echo ""
 echo "Report written to $REPORT"
