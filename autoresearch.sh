@@ -282,6 +282,41 @@ Ranged version deps:    $RANGED_DEPS
 Patched packages:       $PATCHED_PKGS
 EOF
 
+# ── 11d. Non-null assertions ────────────────────────────────
+section "Non-null assertions"
+NON_NULL_TOTAL=$(python3 << 'PYEOF'
+import os, re
+total = 0
+for root, dirs, files in os.walk('packages'):
+    dirs[:] = [d for d in dirs if d != 'node_modules']
+    for f in files:
+        if not f.endswith('.ts') or f.endswith('.test.ts') or f.endswith('.d.ts') or f.endswith('.gen.ts'):
+            continue
+        filepath = os.path.join(root, f)
+        with open(filepath) as fh:
+            lines = fh.readlines()
+        for line in lines:
+            if re.search(r'(String|Int|Float|Boolean|ID)!', line):
+                continue
+            stripped = line.lstrip()
+            if stripped.startswith('//') or stripped.startswith('*'):
+                continue
+            for m in re.finditer(r'([\w\)\]])(!)(?![!=])', line):
+                pos = m.start(2)
+                before = line[:pos]
+                dq = before.count('"') - before.count('\\"')
+                sq = before.count("'") - before.count("\\'")
+                bt = before.count('`') - before.count('\\`')
+                if dq % 2 == 0 and sq % 2 == 0 and bt % 2 == 0:
+                    total += 1
+print(total)
+PYEOF
+)
+metric non_null_assertions "$NON_NULL_TOTAL"
+tee -a "$REPORT" <<EOF
+Non-null assertions (!):  $NON_NULL_TOTAL
+EOF
+
 # ── 12. Debt score (composite, 0–100) ──────────────────────
 section "Composite debt score"
 # Each dimension capped at its weight. No overflow.

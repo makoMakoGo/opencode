@@ -244,7 +244,7 @@ SCC 1 是架构级问题——`config/config` 和 `lsp/lsp` 作为核心基础�
 - **llm 包 18 个 ts-ignore** 全部在类型测试文件（`auth-options.types.ts`, `provider.types.ts`）中——这些是**刻意编写的负向类型测试**，验证错误类型被拒绝。不是债务，而是良好的类型安全实践。
 - **core 包 20 次 `any`** 主要在 `log.ts`（日志接口，本质上是 `any` 类型的）和 `effect-zod.ts`（Effect 内部交互）。属于基础设施层面，难以避免。
 
-- **app 包有 182 个非空断言 (`!`)**, opencode 有 57 个，是另一类类型安全隐患
+- 更正（排除 GraphQL 语法 `String!`/`Int!`）：app 包实际 8 个非空断言，opencode 包 114 个（集中在 5 个 CLI 文件中，占 39%）。详见 §2.12。
 ### 2.9 测试覆盖盲区
 
 **5 个包有源代码但完全没有测试：**
@@ -285,6 +285,28 @@ SCC 1 是架构级问题——`config/config` 和 `lsp/lsp` 作为核心基础�
 **补丁覆盖**表明上游有阻塞性 bug：`solid-js@1.9.10`、`photon-node@0.3.4`、`standard-openapi@0.2.9`、`@npmcli/agent@4.0.0`。
 
 **版本冲突**：`@shikijs/transformers`（3.9.2 vs 3.20.0）、`minimatch`（10.0.3 vs 10.2.5）、`aws4fetch`（pinned vs ranged）、`@solid-primitives/resize-observer`（2.1.3 vs 2.1.5）。`bun.lock` 会解析为单一版本，但范围版本声明不一致是维护隐患。
+
+### 2.12 非空断言分析
+
+| 包 | 非空断言 (`!`) 数量 |
+|----|---------------------|
+| opencode | **114** |
+| console | 18 |
+| core | 10 |
+| llm | 7 |
+| app | 8 |
+| 其他 | 16 |
+| **总计** | **173** |
+
+**集中度**：opencode 包的 114 个断言分布在 41 个文件中，前 5 个文件占 39%：
+
+- `cli/cmd/github.ts` (14) — Octokit API 调用参数断言 (`issueId!`, `triggerCommentId!`)
+- `cli/cmd/tui/win32.ts` (13) — Win32 API 绑定
+- `cli/cmd/tui/component/bg-pulse-render.ts` (6) — TUI 渲染器
+- `cli/cmd/run/theme.ts` (6) — 主题配置
+- `acp/agent.ts` (6) — ACP 协议代理
+
+`github.ts` 的 14 个断言主要是 `issueId!`、`triggerCommentId!` 等模式——在条件分支已确认存在后直接断言非空。这些可以用 `as string` 显式标注或用 guard 函数替代，降低运行时风险。
 ---
 
 ## 3. 关键债务领域详细分析
@@ -390,7 +412,7 @@ Layer.provide(SessionCompaction.defaultLayer),
 | 模块约定 | ✅ 有明确规范 | AGENTS.md 含 Effect 规范 |
 | 废弃标记透明 | ✅ 全部标注 | 19 个 @deprecated |
 | TODO 标记少 | ✅ 控制良好 | 仅 18 个真实 TODO |
-| 模块耦合 | ✅ 整体可控 | 仅 3 个高耦合文件 |
+| 模块耦合 | ⚠️ 需关注 | 3 个高耦合文件 + 20 模块循环依赖 (§2.6) |
 | llm 包类型安全 | ✅ 负向类型测试 | 18 个 ts-ignore 全是刻意编写的类型守卫测试 |
 | 测试运行时 | ✅ 99.6% 通过 | 2,923 tests, 11 fail |
 | 新代码质量 | ✅ 规范 Effect 模块 | data-migration.ts 遵循 Service+Layer+defaultLayer 模式 |
@@ -445,6 +467,8 @@ Layer.provide(SessionCompaction.defaultLayer),
 10. **深嵌套重构**（3,693 行 >4 级缩进）
 11. **Copilot SDK 适配器简化**（429 行深嵌套）
 12. **`app-runtime.ts` 自动化组装**（减少手动耦合点）
+13. **循环依赖拆分**（20 模块 SCC → 引入接口层解耦 config/lsp 与 session/project）
+14. **非空断言替换**（173 个 `!` → guard 函数或 `as string` 显式标注）
 
 ---
 

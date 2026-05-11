@@ -76,6 +76,10 @@ v0.x unstable deps:     19
 Ranged version deps:    22
 Patched packages:       4
 
+=== Non-null assertions ===
+METRIC non_null_assertions=173
+Non-null assertions (!):  173
+
 === Composite debt score ===
 God files (1K):     15.0/15
 Any casts:          15.0/15
