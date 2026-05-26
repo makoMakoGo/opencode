@@ -196,7 +196,7 @@ xychart-beta
 - 脚手架 6: 647 个重复代码块（复印机坏了）
 - 脚手架 7: 212 个非空断言（运行时炸弹）
 
-**墙在哪？** 在 2,101 行的 `prompt.ts` 里，在 1,822 行的 `Effect.gen` 函数里，在 760 行有 117 次 `any` 的 `anthropic.ts` 里。
+**墙在哪？** 在 1,780 行的 `prompt.ts` 里，在 1,536 行的 `Effect.gen` 函数里，在 760 行有 118 次 `any` 的 `anthropic.ts` 里。
 
 **地基在哪？** 在 20 模块的循环依赖里，在 19 个 v0.x 不稳定依赖里，在 4 个补丁包里。
 **开发商在哪？** 在 GitHub Issues 里，处理着 100+ 个 open issues，其中 20 个是崩溃报告。
@@ -219,10 +219,10 @@ xychart-beta
 - 脚手架 3: 19 个 v0.x 不稳定依赖（核心 PTY 功能的 API 随时可能变）
 - 脚手架 4: 4 个补丁包（solid-js、photon-node、standard-openapi、npmcli/agent）
 
-**墙在哪？** 在 2,101 行的 `prompt.ts` 里，在 1,822 行的 `Effect.gen` 函数里，在 760 行有 117 次 `any` 的 `anthropic.ts` 里。
+**墙在哪？** 在 1,780 行的 `prompt.ts` 里，在 1,536 行的 `Effect.gen` 函数里，在 760 行有 118 次 `any` 的 `anthropic.ts` 里。
 
 ---
-**墙在哪？** 在 2,101 行的 `prompt.ts` 里，在 1,822 行的 `Effect.gen` 函数里，在 760 行有 117 次 `any` 的 `anthropic.ts` 里。
+**墙在哪？** 在 1,780 行的 `prompt.ts` 里，在 1,536 行的 `Effect.gen` 函数里，在 760 行有 118 次 `any` 的 `anthropic.ts` 里。
 **地基在哪？** 在 20 模块的循环依赖里，在 19 个 v0.x 不稳定依赖里，在 4 个补丁包里。
 **开发商在哪？** 在 GitHub Issues 里，处理着 100+ 个 open issues，其中 20 个是崩溃报告。
 
@@ -233,8 +233,8 @@ xychart-beta
 | 步骤 | 时间 | 成本 |
 | 巨型文件 (>1000 LOC) | 🔴 高 | 15.0/15 | 18 个文件超 1000 行 |
 | `any` 类型泛滥 | 🔴 高 | 15.0/15 | 754 处，zen provider 占 276 |
-| v1/v2 session 双写 | 🔴 高 | 15.0/15 | 4 个文件, 20 处 flag 引用, 16 处 TODO(v2) |
-| 理解 1,822 行 Effect.gen | 3 小时 | $240 |
+| v1/v2 session 双写 | 🔴 高 | 15.0/15 | 4 个文件, 23 处 flag 引用, 16 处 TODO(v2) |
+| 理解 1,536 行 Effect.gen | 3 小时 | $240 |
 | 理解 v1/v2 双写逻辑 | 1 小时 | $80 |
 | 理解循环依赖关系 | 1 小时 | $80 |
 | 跑 3,688 行测试 | 0.5 小时 | $40 |
@@ -296,7 +296,7 @@ xychart-beta
 |----------|--------|------|----------|
 | 巨型文件 (>1000 LOC) | 🔴 高 | 15.0/15 | 16 个文件超 1000 行 |
 | `any` 类型泛滥 | 🔴 高 | 15.0/15 | 754 处，zen provider 占 276 |
-| v1/v2 session 双写 | 🔴 高 | 15.0/15 | 4 个文件, 20 处 flag 引用, 16 处 TODO(v2) |
+| v1/v2 session 双写 | 🔴 高 | 15.0/15 | 4 个文件, 23 处 flag 引用, 16 处 TODO(v2) |
 | 深层嵌套 (>4 级缩进) | 🟡 中 | 10.0/10 | 3,693 行 |
 | 已废弃 API | 🟡 中 | 10.0/10 | 20 个 @deprecated |
 | 测试质量 | 🟡 中 | 10.0/10 | 5 个脆弱测试，17 个巨型测试 |
@@ -308,7 +308,7 @@ xychart-beta
 
 ### 2.2 Top 5 最离谱的文件
 
-#### **#1: `session/prompt.ts` —— 2,101 行的"上帝文件"**
+#### **#1: `session/prompt.ts` —— 1,780 行的"上帝文件"**
 
 ```typescript
 // 63 个 import，63 个依赖，63 个理由说明这个文件承担了太多职责
@@ -318,9 +318,9 @@ import { ... } from "@/tool"
 // ... 60 more imports
 ```
 
-- **行数**: 2,101 行（相当于一本中篇小说）
+- **行数**: 1,780 行（相当于一本中篇小说）
 - **Import 数**: 63 个（全项目最高）
-- **Effect.gen 函数**: 1,822 行（占文件的 **87%**）
+- **Effect.gen 函数**: 1,536 行（占文件的 **86%**）
 - **职责**: system prompt 组装、tool 定义构建、消息历史处理、结构化输出创建、**双写迁移代码**
 
 **一个文件干了 5 件事，你敢改第一章吗？**
@@ -342,7 +342,7 @@ import { ... } from "@/tool"
   
 **一个函数干了 4 件事，开发者自己都说是"stupid inefficient dogshit"。**
 
-#### **#3: `console/.../provider/anthropic.ts` —— 760 行有 117 次 `any`**
+#### **#3: `console/.../provider/anthropic.ts` —— 760 行有 118 次 `any`**
 
 ```typescript
 for (const m of inMsgs) {
@@ -362,12 +362,12 @@ for (const m of inMsgs) {
 
 - **行数**: 760 行
 - **`as any` 次数**: 95 次
-- **`any` 引用次数**: 117 次
+- **`any` 引用次数**: 118 次
 - **密度**: 每 **8 行**就有一次 `as any`
 
 **TypeScript 的本意是类型安全，这个文件的解法是 `as any`。**
 
-#### **#4: `console/.../provider/openai.ts` —— 629 行有 125 次 `any`**
+#### **#4: `console/.../provider/openai.ts` —— 629 行有 124 次 `any`**
 
 ```typescript
 const toImg = (p: any) => {
@@ -380,7 +380,7 @@ const toImg = (p: any) => {
 
 - **行数**: 629 行
 - **`as any` 次数**: 105 次
-- **`any` 引用次数**: 125 次
+- **`any` 引用次数**: 124 次
 - **密度**: 每 **6 行**就有一次 `as any`（全项目最高）
 
 **参数已经是 `any` 了，还要写 `(p as any)` —— 这是 `any` 的平方。**
@@ -414,7 +414,7 @@ function selectAzureLanguageModel(sdk: any, modelID: string, useChat: boolean) {
 **数据**: 18 个文件超过 1000 行
 
 **最严重的**:
-- `prompt.ts`: 2,101 行（63 个 import，Effect.gen 占 87%）
+- `prompt.ts`: 1,780 行（63 个 import，Effect.gen 占 86%）
 - `lsp/server.ts`: 2,064 行
 - `acp/agent.ts`: 1,969 行
 - `provider.ts`: 1,882 行
@@ -438,8 +438,8 @@ function selectAzureLanguageModel(sdk: any, modelID: string, useChat: boolean) {
 - 其他: 41 次
 
 **最严重的**:
-- `openai.ts`: 125 次 `any`（每 6 行一次）
-- `anthropic.ts`: 117 次 `any`（每 8 行一次）
+- `openai.ts`: 124 次 `any`（每 6 行一次）
+- `anthropic.ts`: 118 次 `any`（每 8 行一次）
 - `transform.ts`: 15 次 `any`（开发者自己说是"dogshit"）
 
 **比喻**: "TypeScript 的本意是类型安全，OpenCode 的解法是 `as any`"
@@ -451,7 +451,7 @@ function selectAzureLanguageModel(sdk: any, modelID: string, useChat: boolean) {
 
 #### **维度 3: v1/v2 双写迁移（15/15 分）**
 
-**数据**: 15 处 `TODO(v2)` 标记 + 20 处 `Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM` 引用
+**数据**: 16 处 `TODO(v2)` 标记 + 23 处 `experimentalEventSystem` 引用
 
 **分布**:
 - `processor.ts`: 13 处
@@ -1028,7 +1028,7 @@ await Bun.file("output.json").write(JSON.stringify(data))
 | Service 声明 | 66 | 66 个 Service |
 | Layer.effect | 66 | 66 个 Layer |
 | defaultLayer | 58 | 58 个 defaultLayer |
-| app-runtime.ts 导入 | 50 | 50 个 import |
+| app-runtime.ts 导入 | 59 | 59 个 import |
 
 **问题**: 66 个 Service + 66 个 Layer + 58 个 defaultLayer，形成了一个过度工程化的依赖注入体系。
 
@@ -1058,13 +1058,13 @@ import { Config } from "@/config"
 import { LSP } from "@/lsp"
 // ... 58 more imports
 
-// 1,822 行的 Effect.gen 函数
+// 1,536 行的 Effect.gen 函数
 export const SessionRun = Effect.gen(function* (_) {
-  // ... 1,822 行代码
+  // ... 1,536 行代码
 })
 ```
 
-**影响**: 你无法理解这个文件，除非读完 2,101 行。你无法测试它，除非 mock 63 个依赖。你无法重构它，除非同时改 5 个职责。
+**影响**: 你无法理解这个文件，除非读完 1,780 行。你无法测试它，除非 mock 63 个依赖。你无法重构它，除非同时改 5 个职责。
 
 **比喻**: "就像一个瑞士军刀，但每个功能都是坏的"
 
@@ -1215,7 +1215,7 @@ if (Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM) {
 
 **Before (现在)**:
 ```
-session/prompt.ts (2,101 行)
+session/prompt.ts (1,780 行)
 ├── System prompt 组装 (300 行)
 ├── Tool 定义构建 (400 行)
 ├── 消息历史处理 (500 行)
@@ -1235,7 +1235,7 @@ session/
 ```
 
 **收益**:
-- 最大文件从 2,101 行降到 500 行（**4.2 倍**）
+- 最大文件从 1,780 行降到 500 行（**3.6 倍**）
 - 每个文件可独立理解、测试、重构
 - 消除 63 个 import 的耦合
 
@@ -1320,7 +1320,7 @@ yield* sync.run(SessionEvent.Compaction.Started.Sync, { ... })
 
 **收益**:
 - 消除 16 处"临时"标记
-- 消除 20 处 flag 引用
+- 消除 23 处 flag 引用
 - 消除 v1 路径代码
 - 每个 bug fix 只需改一个地方
 
@@ -1341,13 +1341,13 @@ session/session.sql → session/message-v2 (通过接口)
 **收益**:
 - 消除 20 模块循环依赖
 - 每个模块可独立理解、测试、替换
-- 消除 `app-runtime.ts` 的 50 个 import
+- 消除 `app-runtime.ts` 的 59 个 import
 
 ### 重构 ROI 分析
 
 | 重构项 | 投入时间 | 收益 | ROI |
 |--------|----------|------|-----|
-| 拆分 `prompt.ts` | 40 小时 | 最大文件从 2,101 行降到 500 行 | **52x** |
+| 拆分 `prompt.ts` | 40 小时 | 最大文件从 1,780 行降到 500 行 | **52x** |
 | 类型化 `anthropic.ts` | 20 小时 | 消除 117 处 `any` | **5.8x** |
 | 移除 v1/v2 双写 | 16 小时 | 消除 16 处"临时"标记 | **93x** |
 | 拆分循环依赖 | 80 小时 | 消除 20 模块循环依赖 | **25x** |
@@ -1388,7 +1388,7 @@ const toImg = (p: any) => {
 
 #### **反模式 5: "The TODO-driven Architecture"（TODO 驱动架构）**
 
-**代表**: 15 处 `TODO(v2)` 标记，从 2024 年到现在
+**代表**: 16 处 `TODO(v2)` 标记，从 2024 年到现在
 
 ```typescript
 // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
@@ -1405,16 +1405,16 @@ const toImg = (p: any) => {
 
 ### 4.2 Effect-TS 的"过度使用"案例
 
-#### **案例 1: `prompt.ts` 的 1,822 行 `Effect.gen` 函数**
+#### **案例 1: `prompt.ts` 的 1,536 行 `Effect.gen` 函数**
 
 ```typescript
 export const SessionRun = Effect.gen(function* (_) {
-  // ... 1,822 行代码
+  // ... 1,536 行代码
   // 包括：system prompt 组装、tool 定义构建、消息历史处理、结构化输出创建、双写迁移代码
 })
 ```
 
-**问题**: 一个 `Effect.gen` 函数跨越 1,822 行，这不是"函数式编程"，这是"函数式灾难"。
+**问题**: 一个 `Effect.gen` 函数跨越 1,536 行，这不是"函数式编程"，这是"函数式灾难"。
 
 **对比**: 一个好的 `Effect.gen` 函数应该在 50-100 行以内，每个 `yield*` 调用一个独立的 service。
 
@@ -1428,7 +1428,7 @@ Layer.merge(SessionRun.defaultLayer)
   // ... 16 more layers
 ```
 
-**问题**: `app-runtime.ts` 有 50 个 import，手动连接 66 个 Service。
+**问题**: `app-runtime.ts` 有 59 个 import，手动连接 66 个 Service。
 
 **影响**: 添加一个新 service，就要修改 `app-runtime.ts`。这是一个隐式的变更瓶颈。
 
@@ -1645,7 +1645,7 @@ sankey-beta
 
 | 维度 | OpenCode | 行业最佳实践 | 差距 |
 |------|----------|-------------|------|
-| 最大文件行数 | 2,101 | < 500 | **4.2x** |
+| 最大文件行数 | 1,780 | < 500 | **3.6x** |
 | `any` 使用密度 | 3.1/文件 (console) | < 0.1/文件 | **31x** |
 | 循环依赖 | 20 模块 SCC | 0 | **∞** |
 | 测试/源码比 | 0.33 | > 1.0 | **3x** |
@@ -1702,9 +1702,9 @@ sankey-beta
 **答案**: "永远不会安全"
 
 **原因**:
-1. 需要读完 2,101 行才能理解它干了什么
+1. 需要读完 1,780 行才能理解它干了什么
 2. 需要理解 63 个依赖
-3. 需要理解 1,822 行的 `Effect.gen` 函数
+3. 需要理解 1,536 行的 `Effect.gen` 函数
 4. 需要理解 v1/v2 双写逻辑
 5. 需要理解循环依赖关系
 6. 需要跑 3,688 行的测试文件
@@ -1851,7 +1851,7 @@ sankey-beta
 
 - 开始 session v1 → v2 迁移
 - 添加 `Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM`
-- 添加 15 处 `TODO(v2)` 标记
+- 添加 16 处 `TODO(v2)` 标记
 - **问题**: "临时"标记变成永久债务
 
 ### 2025 Q2: 技术债务积累
@@ -1906,7 +1906,7 @@ sankey-beta
 
 ### 教训 1: "临时"代码永远不会临时
 
-**OpenCode 的案例**: 15 处 `TODO(v2)` 标记存在了超过 1 年
+**OpenCode 的案例**: 16 处 `TODO(v2)` 标记存在了超过 1 年
 
 **教训**: 如果你写了"临时"代码，要么在 2 周内删除它，要么接受它会变成永久债务
 
@@ -1928,7 +1928,7 @@ sankey-beta
 
 ### 教训 3: 巨型文件是维护噩梦
 
-**OpenCode 的案例**: 18 个文件超过 1000 行，最大的 2,101 行
+**OpenCode 的案例**: 18 个文件超过 1000 行，最大的 1,780 行
 
 **教训**: 文件越大，越难理解、测试、重构
 
@@ -1964,7 +1964,7 @@ sankey-beta
 3. 清理废弃 Plugin TUI API（移除 10+ 个废弃方法）
 **P2 — 中期**:
 4. 修复 11 个失败的测试
-5. 拆分 `prompt.ts`（2,101 行 → 4-5 个 service）
+5. 拆分 `prompt.ts`（1,780 行 → 4-5 个 service）
 6. 拆分 `provider.ts`（1,882 行 → 3 个文件）
 **P3 — 持续改善**:
 7. 深嵌套重构（3,693 行 >4 级缩进）
@@ -2072,7 +2072,7 @@ sankey-beta
 
 **P2 — 中期**:
 4. 修复 11 个失败的测试
-5. 拆分 `prompt.ts`（2,101 行 → 4-5 个 service）
+5. 拆分 `prompt.ts`（1,780 行 → 4-5 个 service）
 6. 拆分 `provider.ts`（1,882 行 → 3 个文件）
 
 **P3 — 持续改善**:
