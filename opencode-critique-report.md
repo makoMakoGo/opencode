@@ -199,7 +199,21 @@ xychart-beta
 **墙在哪？** 在 2,101 行的 `prompt.ts` 里，在 1,822 行的 `Effect.gen` 函数里，在 760 行有 117 次 `any` 的 `anthropic.ts` 里。
 
 **地基在哪？** 在 20 模块的循环依赖里，在 19 个 v0.x 不稳定依赖里，在 4 个补丁包里。
+**开发商在哪？** 在 GitHub Issues 里，处理着 100+ 个 open issues，其中 20 个是崩溃报告。
 
+**一句话总结**: OpenCode 是一个用 214K 行代码证明了"如何把简单事情搞复杂"的项目。它的技术债务评分是 92.4/100，比一个刚毕业的大学生写的第一个项目还糟糕。它的开发者自己都知道代码烂，但没人改。
+
+**最后一击**: `transform.ts` 的第 62 行写着：
+
+```typescript
+// TODO: fix this stupid inefficient dogshit function
+```
+
+这个注释是 **Aiden Cline** 在 2026-05-05 加的（commit `6409aceb1`，PR #25934）。**21 天了，没人改。**
+
+**开发者自己都知道这个函数烂，但没人改。**
+
+**这就是 OpenCode 的现状。**
 **开发商在哪？** 在 GitHub Issues 里，处理着 100+ 个 open issues，其中 20 个是崩溃报告。
 - 脚手架 2: 20 个模块的循环依赖（config ↔ lsp ↔ session ↔ config）
 - 脚手架 3: 19 个 v0.x 不稳定依赖（核心 PTY 功能的 API 随时可能变）
