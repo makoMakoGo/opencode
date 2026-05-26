@@ -481,8 +481,104 @@ afdae3950 (2026-05-26 13:41) - sync
 - **Type suppressions**: 15 个（`@ts-ignore` + `@ts-expect-error`）
 - **Stale TODOs**: 31 个（包括 "// TODO: remove this hack"）
 
----
 
+## 3.4 开发者体验 —— 真实的开发痛苦
+
+### 场景 1: 修改一个配置
+
+**目标**: 添加一个新的 provider 配置项
+
+**实际步骤**:
+1. 修改 `config/config.ts`（添加字段）
+2. 修改 `config/schema.ts`（添加验证）
+3. 修改 `config/default.ts`（添加默认值）
+4. 修改 `provider/provider.ts`（读取配置）
+5. 修改 `provider/transform.ts`（使用配置）
+6. 修改 `session/prompt.ts`（传递配置）
+7. 修改 `cli/cmd/tui/plugin/internal.ts`（UI 展示）
+8. 跑 3 个测试套件
+9. 祈祷没有循环依赖
+
+**预期步骤**（架构良好的项目）:
+1. 修改 `config.ts`（添加字段 + 验证 + 默认值）
+2. 修改 `provider.ts`（读取 + 使用配置）
+3. 跑 1 个测试套件
+
+**差距**: 9 步 vs 3 步（**3 倍**）
+
+### 场景 2: 修复一个 bug
+
+**目标**: 修复 `processor.ts` 中的一个 bug
+
+**实际步骤**:
+1. 阅读 `processor.ts`（1,200 行）
+2. 发现 bug 在 v1 路径
+3. 修复 v1 路径
+4. 发现还有 v2 路径（因为 `Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM`）
+5. 修复 v2 路径
+6. 发现 `prompt.ts` 也有相关代码
+7. 修复 `prompt.ts`
+8. 发现 `compaction.ts` 也有相关代码
+9. 修复 `compaction.ts`
+10. 跑测试，发现 5 个 skill discovery 测试挂了
+11. 修复 skill discovery 测试
+12. 跑测试，发现 3 个 llm 测试挂了（缺环境变量）
+13. 跳过 llm 测试
+14. 提交 PR
+
+**预期步骤**（架构良好的项目）:
+1. 阅读 `processor.ts`（200 行）
+2. 修复 bug
+3. 跑测试
+4. 提交 PR
+
+**差距**: 14 步 vs 4 步（**3.5 倍**）
+
+### 场景 3: 添加一个新功能
+
+**目标**: 添加一个新的 tool 类型
+
+**实际步骤**:
+1. 阅读 `tool/registry.ts`（理解注册机制）
+2. 阅读 `tool/task.ts`（理解现有 tool）
+3. 阅读 `tool/read.ts`（理解另一个现有 tool）
+4. 阅读 `tool/apply_patch.ts`（理解第三个现有 tool）
+5. 发现 3 个文件有大量重复代码（647 个重复块）
+6. 复制一个现有 tool 的代码
+7. 修改代码
+8. 阅读 `session/prompt.ts`（理解 tool 如何被使用）
+9. 阅读 `session/processor.ts`（理解 tool 如何被调用）
+10. 阅读 `session/compaction.ts`（理解 tool 如何被压缩）
+11. 跑测试
+
+**预期步骤**（架构良好的项目）:
+1. 阅读 `tool/registry.ts`（理解注册机制）
+2. 创建新 tool 文件
+3. 实现 tool
+4. 跑测试
+
+**差距**: 11 步 vs 4 步（**2.75 倍**）
+
+### 开发者心声（从 GitHub Issues 提取）
+
+**Issue #27106**: "The latest version is terribly slow"
+> User considering moving away from opencode.
+
+**Issue #24771**: "Opencode severe performance issues"
+> Team considering moving away from opencode.
+
+**Issue #25953**: "Edit tool corrupts Python indentation in v1.14.39 (silent data loss)"
+> Critical data loss bug - 100% failure rate on affected patterns.
+
+**Issue #28830**: "[bug] On WSL2, always crash exit"
+> Crashes on WSL2 Ubuntu.
+
+**Issue #26667**: "[BUG]: session.processor crashes sidecar on unhandled AbortError"
+> Crashes entire sidecar process.
+
+**总结**: 开发者在用 OpenCode 时，遇到的不是"小问题"，而是"核心功能崩溃"和"数据丢失"。
+
+---
 ## 第四层：Technical Deep Dive —— 资深开发者看到会"会心一笑"（或者"会心一痛"）
 
 ### 4.1 架构反模式集锦
