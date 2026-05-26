@@ -795,9 +795,153 @@ afdae3950 (2026-05-26 13:41) - sync
 4. 结构化输出创建
 5. 双写迁移代码
 
-**代码证据**:
+**比喻**: "用大炮打蚊子，蚊子死了，但墙也塌了"
+---
+### 4.6 Effect-TS 过度使用 —— 真实代码案例
+
+#### **案例 1: 读取一个 JSON 文件**
+
+**Before (OpenCode 的做法)**:
 ```typescript
-// 63 个 import
+export const ConfigLive = Layer.effect(
+  Config,
+  Effect.gen(function* (_) {
+    const file = yield* _.promise(Bun.file("opencode.json").json())
+    return { ...file }
+  })
+)
+```
+
+**After (简单做法)**:
+```typescript
+const config = JSON.parse(await Bun.file("opencode.json").text())
+```
+
+**问题**: 读一个 JSON 文件，为什么要用 Effect？直接 `JSON.parse` 不行吗？
+
+**影响**:
+- 新人学习成本高（需要理解 Effect.gen、yield*、Layer）
+- 调试困难（Effect 的 stack trace 不直观）
+- 性能开销（Effect 的调度器有开销）
+
+#### **案例 2: 一个简单的配置验证**
+
+**Before (OpenCode 的做法)**:
+```typescript
+export const ConfigSchema = Schema.struct({
+  provider: Schema.string,
+  model: Schema.string,
+  apiKey: Schema.string,
+})
+
+export const ConfigLive = Layer.effect(
+  Config,
+  Effect.gen(function* (_) {
+    const raw = yield* _.promise(Bun.file("opencode.json").json())
+    const config = yield* _.promise(Schema.decodeUnknown(ConfigSchema)(raw))
+    return config
+  })
+)
+```
+
+**After (简单做法)**:
+```typescript
+const raw = JSON.parse(await Bun.file("opencode.json").text())
+if (!raw.provider || !raw.model || !raw.apiKey) {
+  throw new Error("Invalid config")
+}
+const config = raw as Config
+```
+
+**问题**: 一个简单的配置验证，为什么要用 Schema？直接 `if` 检查不行吗？
+
+**影响**:
+- 代码膨胀（10 行 vs 3 行）
+- 学习成本高（需要理解 Schema、decodeUnknown）
+- 调试困难（Schema 的错误信息不直观）
+
+#### **案例 3: 一个简单的 HTTP 请求**
+
+**Before (OpenCode 的做法)**:
+```typescript
+export const HttpLive = Layer.effect(
+  Http,
+  Effect.gen(function* (_) {
+    const response = yield* _.promise(fetch("https://api.example.com"))
+    const data = yield* _.promise(response.json())
+    return data
+  })
+)
+```
+
+**After (简单做法)**:
+```typescript
+const response = await fetch("https://api.example.com")
+const data = await response.json()
+```
+
+**问题**: 一个简单的 HTTP 请求，为什么要用 Effect？直接 `fetch` 不行吗？
+
+**影响**:
+- 代码膨胀（5 行 vs 2 行）
+- 学习成本高（需要理解 Effect.gen、yield*、Layer）
+- 调试困难（Effect 的 stack trace 不直观）
+
+#### **案例 4: 一个简单的文件写入**
+
+**Before (OpenCode 的做法)**:
+```typescript
+export const FileLive = Layer.effect(
+  File,
+  Effect.gen(function* (_) {
+    yield* _.promise(Bun.file("output.json").write(JSON.stringify(data)))
+  })
+)
+```
+
+**After (简单做法)**:
+```typescript
+await Bun.file("output.json").write(JSON.stringify(data))
+```
+
+**问题**: 一个简单的文件写入，为什么要用 Effect？直接 `write` 不行吗？
+
+**影响**:
+- 代码膨胀（3 行 vs 1 行）
+- 学习成本高（需要理解 Effect.gen、yield*、Layer）
+- 调试困难（Effect 的 stack trace 不直观）
+
+### Effect-TS 使用统计
+
+| 指标 | 数量 | 说明 |
+|------|------|------|
+| Effect.gen 文件 | 168 | 39% 的源文件使用 Effect.gen |
+| Service 声明 | 66 | 66 个 Service |
+| Layer.effect | 66 | 66 个 Layer |
+| defaultLayer | 58 | 58 个 defaultLayer |
+| app-runtime.ts 导入 | 50 | 50 个 import |
+
+**问题**: 66 个 Service + 66 个 Layer + 58 个 defaultLayer，形成了一个过度工程化的依赖注入体系。
+
+**对比**: 一个好的 Effect 项目应该有 **10-20 个 Service**，而不是 66 个。
+
+### Effect-TS 的正确使用场景
+
+**应该用 Effect 的场景**:
+- 需要错误处理（Effect 的错误处理比 try/catch 更强大）
+- 需要并发控制（Effect 的 Fiber 比 Promise 更灵活）
+- 需要依赖注入（Effect 的 Layer 比手动注入更优雅）
+- 需要取消操作（Effect 的中断比 AbortController 更可靠）
+
+**不应该用 Effect 的场景**:
+- 读取一个 JSON 文件
+- 一个简单的配置验证
+- 一个简单的 HTTP 请求
+- 一个简单的文件写入
+
+**结论**: OpenCode 在 **不应该用 Effect 的场景** 也用了 Effect，导致代码膨胀、学习成本高、调试困难。
+
+---
 import { Session } from "@/session"
 import { Provider } from "@/provider"
 import { Tool } from "@/tool"
