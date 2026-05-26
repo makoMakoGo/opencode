@@ -1,0 +1,140 @@
+
+=== Scale ===
+Source files:         1154
+Test files:           408
+Total .ts files:      1605
+Source lines:         214402
+Test lines:           107212
+Test-to-source ratio: 0.35
+
+=== God files (>500 LOC, excl test/gen/i18n) ===
+Files >500 lines:   59
+Files >1000 lines:  18
+
+=== Code duplication ===
+METRIC dup_blocks=647
+METRIC dup_instances=1418
+Duplicate 8-line blocks:  647
+Total duplicate instances: 1418
+
+=== Type safety ===
+any casts (excl gen):      754
+  source:                  493
+  test:                    261
+@ts-ignore/expect-error:   63 (source: 29)
+catch(e: any):             11
+
+=== Markers ===
+TODO/FIXME/HACK (real):  16
+Dual-write migration:    16
+@deprecated markers:     20
+
+=== Effect migration ===
+Effect.gen/yield* files:  188
+Effect import files:      271
+
+=== Deep nesting ===
+Lines indented >4 levels: 3314
+
+=== Packages without tests ===
+  function (1 src files)  plugin (6 src files)  script (1 src files)  slack (1 src files)  web (4 src files)
+
+=== v1/v2 dual architecture ===
+v1 session files:  23
+v2 session files:  1
+
+=== Console zen provider type safety ===
+anthropic.ts: 118 any-uses in 760 lines
+zen provider total any: 276
+
+=== Coupling ===
+Files importing >15 modules: 3
+Top fan-in modules: effect:140
+util:121
+session:85
+config:60
+provider:56
+
+=== Circular dependencies ===
+METRIC scc_count=5
+METRIC scc_largest=19
+Circular dep SCCs (>1 module): 5
+Largest SCC:                   19 modules
+
+=== Test quality ===
+Fragile tests (>10 any):    5
+Giant test files (>1K LOC): 17
+
+=== Test runtime health ===
+opencode: 2621 tests, 8 fail (99.7% pass), 20 skip
+  - 5 skill discovery: all() returns 0, expected 1-2 (suspected regression)
+  - 1 HTTP workspace proxy: timeout test, expected 500
+  - 2 provider HttpApi OAuth tests
+llm: 217 tests, 3 fail (98.6% pass), 28 skip
+  - 3 OpenAI route: missing OPENAI_API_KEY (auth schema error, not regression)
+core: 85 tests, 0 fail (100% pass)
+Total: 2923 tests, 11 fail (99.6% pass)
+Note: Run with 'bun test --no-preload' from each package dir.
+
+=== Dependency health ===
+Total unique deps:      219
+v0.x unstable deps:     19
+Ranged version deps:    22
+Patched packages:       7
+
+=== Non-null assertions ===
+METRIC non_null_assertions=212
+Non-null assertions (!):  212
+
+=== Composite debt score ===
+God files (1K):     15.0/15
+Any casts:          15.0/15
+Dual-write:         15.0/15
+Markers:            6.4/10
+Deep nesting:       10.0/10
+Coupling:           6.0/10
+Deprecated:         10.0/10
+Test quality:       10.0/10
+No-test packages:   5.0/5
+─────────────────────────
+Total:              92.4/100
+
+=== Per-package breakdown ===
+pkg                    src  test  any  todo  deprec  god500  ts-ignore
+app                    100  59    3    0     0       5       1
+console                110  4     326  0     0       6       9
+core                   115  49    28   0     0       4       2
+desktop                38   2     2    0     0       1       0
+effect-drizzle-sqlite  19   1     40   0     1       1       0
+enterprise             3    2     3    0     0       1       0
+function               1    0     3    0     0       0       0
+http-recorder          9    1     0    0     0       1       0
+llm                    54   26    0    0     0       5       34
+opencode               430  258   319  14    8       41      14
+plugin                 6    0     8    0     11      2       1
+script                 1    0     1    0     0       0       0
+slack                  1    0     4    0     0       0       0
+stats                  15   0     0    0     0       1       0
+ui                     47   6     2    0     0       3       0
+web                    4    0     0    0     0       0       0
+METRIC debt_score=92.4
+METRIC god_files=59
+METRIC god_files_1k=18
+METRIC any_casts=754
+METRIC any_casts_src=493
+METRIC any_casts_test=261
+METRIC ts_ignore=63
+METRIC todo_fixme=16
+METRIC dual_write_markers=16
+METRIC deprecated_markers=20
+METRIC deep_nesting_lines=3314
+METRIC no_test_packages=5
+METRIC effect_files=188
+METRIC effect_import_files=271
+METRIC total_src_files=1154
+METRIC total_test_files=408
+METRIC source_lines=214402
+METRIC coupled_files=3
+METRIC fragile_tests=5
+METRIC giant_tests=17
+METRIC zen_any_total=276
