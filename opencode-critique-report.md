@@ -652,7 +652,108 @@ if (Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM) {
 #### **反模式 3: "The Dependency Inversion Inversion"（依赖倒置倒置）**
 
 **代表**: config 和 lsp 反向依赖 session 和 project
-**影响**: 上游 API 变更会直接影响核心功能。
+---
+#### **反模式 6: "The Copy-Paste Programming"（复制粘贴编程）**
+
+**代表**: 647 个重复 8-line blocks，1,418 个实例
+
+**数据**:
+- 647 个重复块
+- 1,418 个实例
+- 139 个跨文件重复
+
+**最严重的文件**:
+- `acp/agent.ts`: 155 个重复块
+- `provider/transform.ts`: 84 个重复块
+- `lsp/server.ts`: 78 个重复块
+
+**跨文件模式**:
+- `tool/read.ts`、`tool/task.ts`、`tool/apply_patch.ts` 共享 tool 注册模板
+- `session/message.ts`、`message-v2.ts`、`v2/session-event.ts` 共享 Schema 定义
+
+**影响**:
+- 修改一个地方，要同步修改 3 个地方
+- 容易遗漏，导致不一致
+- 代码膨胀，维护成本高
+
+**比喻**: "就像复印机坏了，每张纸都印了 3 遍"
+
+#### **反模式 7: "The Silent Data Corruption"（静默数据损坏）**
+
+**代表**: Issue #25953 - Edit tool corrupts Python indentation
+
+**用户报告**:
+> Edit tool systematically corrupts Python file indentation when editing inside indented blocks. Tool reports success but file on disk has incorrect indentation. Critical data loss bug - 100% failure rate on affected patterns.
+
+**问题**:
+- 工具报告"成功"，但文件已损坏
+- 100% 失败率
+- 影响所有 Python 开发
+
+**影响**:
+- 用户丢失代码
+- 信任度下降
+- 用户流失
+
+**比喻**: "就像银行说转账成功，但钱没了"
+
+#### **反模式 8: "The Memory Leak"（内存泄漏）**
+
+**代表**: Issue #22883 - OOM Kill on long sessions
+
+**用户报告**:
+> OpenCode crashes when running for extended periods. Process is killed by OS OOM killer when RAM usage hits 100%. Crashes worsened after update to v1.4.6. Session length at crash: 50+ messages.
+
+**问题**:
+- 内存持续增长
+- 50+ 消息后崩溃
+- 影响所有长时间会话
+
+**影响**:
+- 用户丢失会话
+- 需要重启应用
+- 工作中断
+
+**比喻**: "就像水龙头没关，水漫金山"
+
+#### **反模式 9: "The Event Listener Leak"（事件监听器泄漏）**
+
+**代表**: Issue #28830 - WSL2 crash
+
+**用户报告**:
+> MaxListenersExceededWarning: event listener leak on HL (Hyperlink) EventTarget. The effect library scheduler adds addEventListener without removeEventListener, causing listener accumulation past default limit of 10. Crashes on WSL2 Ubuntu.
+
+**问题**:
+- Effect.js 调度器添加事件监听器，但不移除
+- 监听器累积超过默认限制（10）
+- 导致崩溃
+
+**影响**:
+- WSL2 用户无法使用
+- 需要重启应用
+- 用户流失
+
+**比喻**: "就像电话线接了 100 个分机，信号断了"
+
+#### **反模式 10: "The Config Nightmare"（配置噩梦）**
+
+**代表**: Issue #16450 - Config files deleted
+
+**用户报告**:
+> Non-package files in ~/.config/opencode/ are intermittently deleted when multiple opencode instances start concurrently. Concurrent bun install processes interfere and delete non-package files.
+
+**问题**:
+- 多个实例同时启动时，配置文件被删除
+- 并发 bun install 进程干扰
+- 数据丢失
+
+**影响**:
+- 用户丢失配置
+- 需要重新配置
+- 信任度下降
+
+**比喻**: "就像酒店打扫房间时，把你的行李扔了"
+
 ---
 ### 4.5 Before/After —— 如果重构会怎样？
 
