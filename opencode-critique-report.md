@@ -11,7 +11,24 @@
 ### 一个具体场景
 
 想象一下：你只是想改个配置文件，结果发现——
+1. 要改 **4 个地方**（processor.ts、prompt.ts、compaction.ts、cli/tui）
+2. 要同步 **v1 和 v2 两条路径**（因为 16 处"临时"双写标记还没删）
+3. 要祈祷 **没有循环依赖**（config → lsp → session → config 的死循环）
+4. 要跑 **3 个测试套件**（因为 5 个 skill discovery 测试又挂了）
+5. 要祈祷 **没有内存泄漏**（因为 50+ 消息后会 OOM Kill）
+6. 要祈祷 **没有数据损坏**（因为 Edit tool 会静默损坏 Python 缩进）
 
+最后，你改完了，提交了，发现 CI 挂了——因为 `transform.ts` 里有个注释写着：
+
+```typescript
+// TODO: fix this stupid inefficient dogshit function
+```
+
+这个注释已经存在了 **21 天**，没人改。
+
+你叹了口气，决定重新来过。但这时你发现——**你的配置文件被删除了**（Issue #16450: 并发 bun install 会删除非包文件）。
+
+**你的一天就这样过去了。**
 1. 要改 **4 个地方**（processor.ts、prompt.ts、compaction.ts、cli/tui）
 2. 要同步 **v1 和 v2 两条路径**（因为 16 处"临时"双写标记还没删）
 3. 要祈祷 **没有循环依赖**（config → lsp → session → config 的死循环）
