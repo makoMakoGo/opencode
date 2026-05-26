@@ -337,19 +337,154 @@ graph LR
   style H fill:#ff6b6b
   style J fill:#ff6b6b
 ```
+**Issue #16450**: "Plugin config files in ~/.config/opencode/ deleted when multiple instances run concurrently"
+> Non-package files in ~/.config/opencode/ are intermittently deleted when multiple opencode instances start concurrently. Concurrent bun install processes interfere and delete non-package files.
+---
+### 3.2 开发者吐槽（Git 历史证据）
+#### **"stupid inefficient dogshit" 事件**
+- **时间**: 2026-05-05 18:07:23
+- **作者**: Aiden Cline
+- **Commit**: `6409aceb1` (PR #25934: "fix: sanitize surrogates")
+- **内容**: `// TODO: fix this stupid inefficient dogshit function`
+- **年龄**: 21 天（至今未修复）
+**开发者自己都知道这个函数烂，但没人改。**
+#### **Revert-Reapply 循环（浪费 4 个 commit）**
+**事件**: "fix(app): startup efficiency (#18854)"
+```
+546748a46 (2026-03-24 09:10) - Original fix
+a379eb386 (2026-03-24 18:36) - Revert
+0dbfefa08 (2026-03-24 18:49) - Reapply
+898456a25 (2026-03-25 06:23) - Revert again
+1041ae91d (2026-03-25 06:25) - Reapply again
+```
 
-**最短环路**: `lsp/lsp → project/instance-context → project/project → session/session.sql → session/message-v2 → lsp/lsp`
+**27 小时内，同一个功能被 revert 了 2 次，reapply 了 2 次。**
 
-**影响**:
-- 这 20 个模块**无法独立理解、测试或替换**
-- config 和 lsp 作为核心基础设施，反向依赖 session 和 project 应用层
-- Effect 迁移加剧了 wiring 耦合（`app-runtime.ts` 手动连接 50 个导入）
+#### **WIP Commit（未完成的工作）**
 
-**比喻**: "就像一个人想抓住自己的头发把自己提起来"
+```
+ba499fb40 (2026-04-13 16:54) - wip
+```
+
+一个只有 "wip" 的 commit，提交到主分支。
+
+#### **Lazy Commit Messages（8 个）**
+
+```
+caa0a2882 (2026-01-13 13:56) - Sync
+afdae3950 (2026-05-26 13:41) - sync
+165481813 (2026-04-09 12:32) - events
+2d037966f (2026-03-25 23:10) - add note
+33a831d2b (2025-05-29 10:21) - rework types
+04337f620 (2026-01-26 13:03) - chore: cleanup
+2b3ddf9f3 (2026-05-25 18:18) - chore: cleanup
+```
+
+**Commit message 是给未来的自己和同事看的，这些 message 什么都没说。**
+
+#### **Accidental Commit（意外提交）**
+
+```
+72d7cb717 (2026-04-17 00:42:45) - remove accidental commit of daytona plugin (#23030)
+```
+
+**有人不小心把 daytona plugin 提交到主分支了。**
+
+### 3.3 统计数据
+
+#### **Issue 统计**
+
+- **Open Issues**: 100+
+- **Crash Reports**: 20 个
+- **Performance Issues**: 11 个
+- **V2 Transition Bugs**: 6 个
+- **Skill Discovery Problems**: 7 个
+- **Config Architecture Requests**: 8 个
+
+#### **PR 统计**
+
+- **Community PRs fixing bugs**: 10 个
+- **PRs fixing V2 regressions**: 4 个
+
+#### **Git 历史统计**
+
+- **Total commits on dev**: 13,428
+- **TODO(v2) markers**: 16 个（"临时"标记超过 1 年）
+- **Type suppressions**: 15 个（`@ts-ignore` + `@ts-expect-error`）
+- **Stale TODOs**: 31 个（包括 "// TODO: remove this hack"）
+
+### 3.4 更多社区声音
+
+#### **性能投诉（用户流失风险）**
+
+**Issue #27106**: "The latest version is terribly slow"
+> Latest version (1.14.48) is super slow - practically unusable. **User considering moving away from opencode.** Happens across all providers.
+
+**Issue #24771**: "Opencode severe performance issues"
+> Sometimes works fine, then becomes super slow - even 'Hey there' takes 10 minutes. Happens in new sessions across all providers. **Team considering moving away from opencode.**
+
+**Issue #26263**: "Extremely slow performance with OpenCode on Ubuntu"
+> Extremely slow performance reported on Ubuntu.
+
+**Issue #27027**: "Skill discovery follows symlinks into large directories, causing 120s+ startup on slow filesystems"
+> External skill discovery uses Bun.Glob with followSymlinks:true. Skill dirs with symlinks to large trees cause 122s cold starts (vs 0.58s without). Affects NFS, WSL /mnt, SMB, sshfs.
+
+#### **数据丢失（最严重的问题）**
+
+**Issue #25953**: "Edit tool corrupts Python indentation in v1.14.39 (silent data loss)"
+> Edit tool systematically corrupts Python file indentation when editing inside indented blocks. Tool reports success but file on disk has incorrect indentation. **Critical data loss bug - 100% failure rate on affected patterns.**
+
+**Issue #16450**: "Plugin config files in ~/.config/opencode/ deleted when multiple instances run concurrently"
+> Non-package files in ~/.config/opencode/ are intermittently deleted when multiple opencode instances start concurrently. **Concurrent bun install processes interfere and delete non-package files.**
+
+#### **V2 过渡期回归（功能缺失）**
+
+**Issue #28686**: "Desktop V2 UI hides prompt controls and status popover"
+> V2 prompt composer no longer shows agent selector or model variant/thinking-effort selector. **Status popover only reachable from legacy session header path.**
+
+**Issue #29051**: "V2 prompt input hides model reasoning selector"
+> V2 prompt input shows selected model but does not render model variant selector. **For models with reasoning variants like GPT-5.5, users cannot change reasoning level.**
+
+#### **Skill Discovery 崩溃（可靠性问题）**
+
+**Issue #27638**: "fix(skill): circular symlinks in external skill dirs cause ENAMETOOLONG crash on Bun runtime"
+> Circular/broken symlinks in skill dirs cause ENAMETOOLONG crash. **Glob with follow:true enters infinite recursion.** Node.js handles gracefully, Bun does not.
+
+**Issue #20940**: "Plugin config() hook mutations to skills.paths invisible to skill discovery"
+> Plugin config() hooks mutate skills.paths but Skill.all() never finds them. **Each service creates separate InstanceState scope via ScopedCache, so mutations are invisible across scopes.**
+
+#### **配置架构痛苦（用户体验问题）**
+
+**Issue #19353**: "[FEATURE]: for splitting config across multiple files"
+> Want to split opencode.jsonc into separate files. **Single config file gets long and messy with many MCP servers, agent configs, provider settings.** Request for 'extends' field to reference other JSON/JSONC files.
+
+**Issue #9062**: "[FEATURE]: support config.d/ directory for modular configuration"
+> Request for config.d/ directory pattern for modular configuration.
+
+**Issue #28600**: "[FEATURE]: centralize persistent state and document all config/cache paths"
+> Request to centralize persistent state and document all config/cache paths.
+
+#### **开发者心声总结**
+
+**用户在流失**:
+- "User considering moving away from opencode" (Issue #27106)
+- "Team considering moving away from opencode" (Issue #24771)
+
+**数据在丢失**:
+- "Critical data loss bug - 100% failure rate" (Issue #25953)
+- "Concurrent bun install processes interfere and delete non-package files" (Issue #16450)
+
+**功能在退化**:
+- "V2 prompt composer no longer shows agent selector" (Issue #28686)
+- "Users cannot change reasoning level" (Issue #29051)
+
+**可靠性在下降**:
+- "Glob with follow:true enters infinite recursion" (Issue #27638)
+- "Crashes entire sidecar process" (Issue #26667)
+
+**结论**: OpenCode 的社区反馈不是"小问题"，而是"核心功能崩溃"、"数据丢失"、"用户流失"。这是一个正在恶化的项目。
 
 ---
-
-## 第三层：Community Voices —— 不是你一个人这么想，社区都这么说
 
 ### 3.1 真实的用户抱怨
 
