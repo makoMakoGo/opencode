@@ -192,6 +192,18 @@ xychart-beta
 - 脚手架 2: 20 个模块的循环依赖（config ↔ lsp ↔ session ↔ config）
 - 脚手架 3: 19 个 v0.x 不稳定依赖（核心 PTY 功能的 API 随时可能变）
 - 脚手架 4: 4 个补丁包（solid-js、photon-node、standard-openapi、npmcli/agent）
+- 脚手架 5: 754 处 `any` 类型（编译器形同虚设）
+- 脚手架 6: 647 个重复代码块（复印机坏了）
+- 脚手架 7: 212 个非空断言（运行时炸弹）
+
+**墙在哪？** 在 2,101 行的 `prompt.ts` 里，在 1,822 行的 `Effect.gen` 函数里，在 760 行有 117 次 `any` 的 `anthropic.ts` 里。
+
+**地基在哪？** 在 20 模块的循环依赖里，在 19 个 v0.x 不稳定依赖里，在 4 个补丁包里。
+
+**开发商在哪？** 在 GitHub Issues 里，处理着 100+ 个 open issues，其中 20 个是崩溃报告。
+- 脚手架 2: 20 个模块的循环依赖（config ↔ lsp ↔ session ↔ config）
+- 脚手架 3: 19 个 v0.x 不稳定依赖（核心 PTY 功能的 API 随时可能变）
+- 脚手架 4: 4 个补丁包（solid-js、photon-node、standard-openapi、npmcli/agent）
 
 **墙在哪？** 在 2,101 行的 `prompt.ts` 里，在 1,822 行的 `Effect.gen` 函数里，在 760 行有 117 次 `any` 的 `anthropic.ts` 里。
 
