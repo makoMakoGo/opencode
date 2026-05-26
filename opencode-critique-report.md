@@ -1420,8 +1420,113 @@ it("should normalize messages", () => {
 - `minimatch`（10.0.3 vs 10.2.5）
 - `aws4fetch`（pinned vs ranged）
 - `@solid-primitives/resize-observer`（2.1.3 vs 2.1.5）
+---
+### 4.7 依赖地狱可视化
 
-**影响**: `bun.lock` 会解析为单一版本，但范围版本声明不一致是维护隐患。
+```mermaid
+graph TD
+  subgraph "v0.x 不稳定依赖 (19 个)"
+    A[bun-pty@0.4.8] --> B[PTY 核心]
+    C[@agentclientprotocol/sdk@0.21.0] --> D[ACP 协议]
+    E[partial-json@0.1.7] --> F[流式 JSON]
+    G[@solidjs/router@0.15.4] --> H[UI 路由]
+    I[web-tree-sitter@0.25.10] --> J[代码解析]
+  end
+  
+  subgraph "补丁包 (4 个)"
+    K[solid-js@1.9.10] --> L[UI 框架]
+    M[photon-node@0.3.4] --> N[图像处理]
+    O[standard-openapi@0.2.9] --> P[OpenAPI]
+    Q[@npmcli/agent@4.0.0] --> R[npm 代理]
+  end
+  
+  subgraph "版本冲突 (4 个)"
+    S[@shikijs/transformers] --> T[3.9.2 vs 3.20.0]
+    U[minimatch] --> V[10.0.3 vs 10.2.5]
+    W[aws4fetch] --> X[pinned vs ranged]
+    Y[@solid-primitives/resize-observer] --> Z[2.1.3 vs 2.1.5]
+  end
+  
+  style A fill:#ff6b6b
+  style C fill:#ff6b6b
+  style E fill:#ff6b6b
+  style G fill:#ff6b6b
+  style I fill:#ff6b6b
+  style K fill:#ffa500
+  style M fill:#ffa500
+  style O fill:#ffa500
+  style Q fill:#ffa500
+  style S fill:#ffff00
+  style U fill:#ffff00
+  style W fill:#ffff00
+  style Y fill:#ffff00
+```
+
+**解读**:
+- **红色**: v0.x 不稳定依赖，API 随时可能变
+- **橙色**: 补丁包，上游有阻塞性 bug
+- **黄色**: 版本冲突，范围版本声明不一致
+
+**影响**:
+- 上游 API 变更会直接影响核心功能
+- 需要自己打补丁
+- 版本冲突会导致不可预测的行为
+
+**比喻**: "就像建在流沙上的房子，随时可能塌"
+
+### 4.8 测试质量可视化
+
+```mermaid
+pie title 测试质量分布
+  "通过 (2,912)" : 2912
+  "失败 (11)" : 11
+  "跳过 (48)" : 48
+```
+
+**解读**:
+- **99.6% 通过率** 看起来很好
+- 但 **11 个失败** 的测试是核心功能
+- **48 个跳过** 的测试可能是技术债
+
+**失败的测试**:
+- **opencode 8 个失败**:
+  - 5 个 skill discovery（疑似回归）
+  - 1 个 HTTP workspace proxy（超时）
+  - 2 个 provider HttpApi OAuth
+
+- **llm 3 个失败**:
+  - 全部因缺少 `OPENAI_API_KEY` 环境变量
+
+**比喻**: "99.6% 通过率看起来很好，但那 0.4% 是核心功能"
+
+### 4.9 代码重复可视化
+
+```mermaid
+sankey-beta
+  "acp/agent.ts", "重复块", 155
+  "provider/transform.ts", "重复块", 84
+  "lsp/server.ts", "重复块", 78
+  "其他文件", "重复块", 330
+  "重复块", "跨文件重复", 139
+  "重复块", "文件内重复", 508
+```
+
+**解读**:
+- **647 个重复块**，1,418 个实例
+- **139 个跨文件重复**（相同的 8 行代码出现在不同文件中）
+- **508 个文件内重复**（相同的 8 行代码出现在同一文件中）
+
+**最严重的文件**:
+- `acp/agent.ts`: 155 个重复块
+- `provider/transform.ts`: 84 个重复块
+- `lsp/server.ts`: 78 个重复块
+
+**影响**:
+- 修改一个地方，要同步修改 3 个地方
+- 容易遗漏，导致不一致
+- 代码膨胀，维护成本高
+
+**比喻**: "就像复印机坏了，每张纸都印了 3 遍"
 
 ---
 
