@@ -1,2120 +1,412 @@
-# OpenCode: 一个用 186K 行代码证明"如何把简单事情搞复杂"的项目
+# OpenCode 技术债务审计：214K 行代码堆出来的屎山
 
-> **复合债务评分: 92.4 / 100**
-> **生成日期**: 2026-05-26  
-> **数据来源**: 自动化债务分析 + GitHub 社区反馈 + Git 历史考古  
+> 结论先行：OpenCode 不是“没测试的玩具项目”，也不是“每个模块都烂”。它的问题更麻烦：核心路径已经形成一座会继续吞维护成本的屎山。大文件、类型逃逸、v1/v2 双轨、循环依赖、重复块、beta/v0 依赖和失败测试叠在一起，让正确修改变得又慢又危险。
+>
+> 本报告以 `autoresearch-report.txt` 的自动化指标、仓库源码和已记录的 issue/commit 证据为主体。无法直接证明的夸张类比、成本 ROI、合成代码示例和自相矛盾的旁支结论已删除或收敛。
 
----
----
 ## 目录
 
-### 第一层：Executive Summary
-- [一个具体场景](#一个具体场景)
-- [一句话总结](#一句话总结)
-- [三个核心数字](#三个核心数字)
-- [一个比喻](#一个比喻)
-- [债务雷达图](#债务雷达图)
-- [技术债务热力图](#技术债务热力图)
-- [代码质量趋势图](#代码质量趋势图)
-
-### 第二层：The Autopsy
-- [2.1 债务热力图](#21-债务热力图)
-- [2.2 Top 5 最离谱的文件](#22-top-5-最离谱的文件)
-- [2.3 三个"满分维度"详解](#23-三个满分维度详解)
-- [2.4 循环依赖图](#24-循环依赖图)
-
-### 第三层：Community Voices
-- [3.1 真实的用户抱怨](#31-真实的用户抱怨)
-- [3.2 开发者吐槽](#32-开发者吐槽)
-- [3.3 统计数据](#33-统计数据)
-- [3.4 更多社区声音](#34-更多社区声音)
-- [3.5 开发者体验](#35-开发者体验)
-
-### 第四层：Technical Deep Dive
-- [4.1 架构反模式集锦](#41-架构反模式集锦)
-- [4.2 Effect-TS 过度使用](#42-effect-ts-过度使用)
-- [4.3 测试质量分析](#43-测试质量分析)
-- [4.4 依赖地狱](#44-依赖地狱)
-- [4.5 Before/After](#45-beforeafter)
-- [4.6 Effect-TS 过度使用案例](#46-effect-ts-过度使用案例)
-- [4.7 依赖地狱可视化](#47-依赖地狱可视化)
-- [4.8 测试质量可视化](#48-测试质量可视化)
-- [4.9 代码重复可视化](#49-代码重复可视化)
-
-### 第五层：The Contrast
-- [5.1 对比表格](#51-对比表格)
-- [5.2 替代方案](#52-替代方案)
-- [5.3 一个思想实验](#53-一个思想实验)
-- [5.4 决策框架](#54-决策框架)
-
-### 第六层：The Verdict
-- [6.1 数据总结](#61-数据总结)
-- [6.2 历史原因](#62-历史原因)
-- [6.3 核心矛盾](#63-核心矛盾)
-- [6.4 最后一击](#64-最后一击)
-
-### 附录
-- [A. 数据来源](#a-数据来源)
-- [B. 评分模型](#b-评分模型)
-- [C. 优先级建议](#c-优先级建议)
-- [D. Quick Wins](#d-quick-wins)
-- [E. Migration Path](#e-migration-path)
-- [F. Metric Verification](#f-metric-verification)
-- [G. What Went Wrong](#g-what-went-wrong)
-- [H. Lessons Learned](#h-lessons-learned)
+- [1. 综合诊断](#1-综合诊断)
+- [2. 最硬的证据](#2-最硬的证据)
+- [3. 架构屎山在哪里](#3-架构屎山在哪里)
+- [4. 社区与 Git 历史信号](#4-社区与-git-历史信号)
+- [5. 测试：不是没有，而是没兜住关键回归](#5-测试不是没有而是没兜住关键回归)
+- [6. 依赖与运行时风险](#6-依赖与运行时风险)
+- [7. 应该先拆哪里](#7-应该先拆哪里)
+- [附录 A. 指标核对表](#附录-a-指标核对表)
+- [附录 B. 已删除或降级的旧叙事](#附录-b-已删除或降级的旧叙事)
 
 ---
 
-### 一个具体场景
+## 1. 综合诊断
 
-想象一下：你只是想改个配置文件，结果发现——
-1. 要改 **4 个地方**（processor.ts、prompt.ts、compaction.ts、cli/tui）
-2. 要同步 **v1 和 v2 两条路径**（因为 16 处"临时"双写标记还没删）
-3. 要祈祷 **没有循环依赖**（config → lsp → session → config 的死循环）
-4. 要跑 **3 个测试套件**（因为 5 个 skill discovery 测试又挂了）
-5. 要祈祷 **没有内存泄漏**（因为 50+ 消息后会 OOM Kill）
-6. 要祈祷 **没有数据损坏**（因为 Edit tool 会静默损坏 Python 缩进）
+| 维度 | 结论 | 证据 |
+|---|---|---|
+| 核心复杂度 | 严重 | 18 个 >1000 LOC 文件；`session/prompt.ts` 1,780 行、63 个 import；`provider/provider.ts` 1,882 行 |
+| 类型债 | 严重 | `any` 总计 754 处，其中源码 493 处、测试 261 处；console 包 326 处，opencode 包 319 处 |
+| v1/v2 迁移尾巴 | 严重 | 16 处 `TODO(v2)` dual-write 标记，集中在 `processor.ts` 和 `prompt.ts` |
+| 重复与耦合 | 严重 | 647 个重复 8-line blocks，1,418 个实例；循环依赖 SCC 最大 19 模块 |
+| 测试健康 | 中高风险 | 2,923 个测试里 11 个失败；5 个 skill discovery 回归；另有 48 个 skip |
+| 依赖健康 | 中高风险 | 19 个 v0.x 依赖，7 个 patched packages，Effect/Drizzle 等关键依赖处于 beta/RC 系列 |
 
-最后，你改完了，提交了，发现 CI 挂了——因为 `transform.ts` 里有个注释写着：
+一句话：OpenCode 的屎山不是因为“代码多”，而是因为**复杂度集中在最常改、最难测、最容易炸的核心路径上**。
 
-```typescript
+`autoresearch-report.txt` 给出的复合债务评分是 **92.4/100**。这个分数应当被理解为一次自动化快照，而不是数学真理；但它背后的分项并不温和：God files、`any`、dual-write、deep nesting、deprecated markers、test quality、no-test packages 都已经打满或接近打满。
+
+---
+
+## 2. 最硬的证据
+
+### 2.1 大文件不是“职责完整”，而是变更边界失控
+
+| 文件 | 行数 | 问题 |
+|---|---:|---|
+| `packages/opencode/src/session/prompt.ts` | 1,780 | prompt、tool、compaction、shell、MCP/LSP、subtask、structured output 混在一条核心链路里 |
+| `packages/opencode/src/provider/provider.ts` | 1,882 | provider 注册、SDK 加载、自定义 provider 逻辑、模型选择混在一个胶水层里 |
+| `packages/opencode/src/provider/transform.ts` | 1,384 | 多 provider message normalization、caching、reasoning variants、schema 修补集中在一起 |
+| `packages/opencode/src/lsp/server.ts` | 2,064 | 大量 LSP server 安装/启动配置集中在一个配置型巨文件里 |
+| `packages/opencode/src/acp/agent.ts` | 1,966 | ACP 协议实现较大，属于协议复杂度集中 |
+
+行数大本身不是罪。真正的问题是：`prompt.ts` 和 `provider.ts` 不是静态表，也不是单一协议实现，而是核心行为编排层。它们承担的概念太多，导致一个小改动容易碰到多条隐式路径。
+
+### 2.2 `prompt.ts` 是核心上帝文件
+
+`prompt.ts` 的问题不是“1,780 行”这个数字本身，而是它把多个变更理由压进同一个文件：
+
+- system prompt 组装
+- tool 定义构建
+- 消息历史处理
+- 结构化输出
+- shell command 路径
+- compaction/overflow 路径
+- MCP/LSP 引用解析
+- subtask 委派
+- v1/v2 event dual-write
+
+这种文件是典型屎山核心：新功能绕不开它，bug 修复绕不开它，迁移也绕不开它。只要这个文件继续承担协调之外的具体职责，维护者就会持续在同一个变更热点里踩雷。
+
+### 2.3 `transform.ts` 的自我注释是真实警报
+
+`packages/opencode/src/provider/transform.ts:62` 有真实注释：
+
+```ts
 // TODO: fix this stupid inefficient dogshit function
 ```
 
-这个注释已经存在了 **21 天**，没人改。
+这不是整份报告的唯一证据，也不该被反复当核弹用。但它很适合作为症状：维护者已经知道 provider transform 路径难看、低效、难改；代码仍然留在核心路径中。
 
-你叹了口气，决定重新来过。但这时你发现——**你的配置文件被删除了**（Issue #16450: 并发 bun install 会删除非包文件）。
+`transform.ts` 承担的是真复杂度：Anthropic、Bedrock、Claude tool call、Mistral tool id、DeepSeek reasoning、OpenRouter reasoning details、Gemini schema、Moonshot `$ref` 等 provider 差异都在这里汇合。问题不是“这里有分支”，而是这些分支缺少更清楚的 provider-boundary 分层。
 
-**你的一天就这样过去了。**
-1. 要改 **4 个地方**（processor.ts、prompt.ts、compaction.ts、cli/tui）
-2. 要同步 **v1 和 v2 两条路径**（因为 16 处"临时"双写标记还没删）
-3. 要祈祷 **没有循环依赖**（config → lsp → session → config 的死循环）
-4. 要跑 **3 个测试套件**（因为 5 个 skill discovery 测试又挂了）
-最后，你改完了，提交了，发现 CI 挂了——因为 `transform.ts` 里有个注释写着：
-```typescript
-// TODO: fix this stupid inefficient dogshit function
-```
-这个注释已经存在了 **21 天**，没人改。
-**OpenCode 是一个用 186K 行代码证明了"如何把简单事情搞复杂"的项目。**
-**你的一天就这样过去了。**
+### 2.4 `any` 不是局部小问题
 
-| 数字 | 含义 | 行业对比 |
-|------|------|----------|
-| **92.4/100** | 债务评分（0=无债务，100=最高） | 比一个刚毕业的大学生写的第一个项目还糟糕 |
-| **16 个** | 超过 1000 行的"巨型文件" | 行业最佳实践：< 500 行 |
-| **754 处** | `as any` 类型转换 | TypeScript 的本意是类型安全，OpenCode 的解法是 `as any` |
+自动化统计：
 
-### 一个比喻
+| 指标 | 数值 |
+|---|---:|
+| `any` 总数 | 754 |
+| 源码 `any` | 493 |
+| 测试 `any` | 261 |
+| opencode 包 | 319 |
+| console 包 | 326 |
+| console zen provider | 276 |
+| `anthropic.ts` | 118 any-uses / 760 行 |
 
-**就像一栋建到一半的楼，脚手架比墙还多。**
-### 债务雷达图
+这不是“只有 SDK 边界有一点 any”。console zen provider 和 opencode 核心包都在大量使用 `any`。在 provider 适配层里，外部 API 的动态结构确实会迫使代码处理 unknown shape；但正确做法应该是把不确定性压到 schema/decoder 边界，而不是让 `any` 扩散到业务分支。
 
-```mermaid
-radar-beta
-  title OpenCode 债务雷达
-  axis "巨型文件", "any 类型", "v1/v2 双写", "深层嵌套", "已废弃 API", "测试质量", "TODO/FIXME", "模块耦合", "无测试包"
-  "OpenCode" : [15, 15, 15, 10, 10, 10, 7.2, 6, 5]
-### 三个核心数字（大字报风格）
-| 数字 | 含义 | 行业对比 |
-|------|------|----------|
-| **92.4/100** | 债务评分（0=无债务，100=最高） | 比一个刚毕业的大学生写的第一个项目还糟糕 |
-| **18 个** | 超过 1000 行的"巨型文件" | 行业最佳实践：< 500 行 |
-| **754 处** | `as any` 类型转换 | TypeScript 的本意是类型安全，OpenCode 的解法是 `as any` |
+`provider/provider.ts` 里 `sdk: any` 的存在可以理解：Vercel AI SDK 和多 provider 加载接口并不总是给出稳定、统一的具体类型。但“可以理解”不等于“没有债”。当核心 provider 抽象靠 `any` 连接，类型系统就无法保护调用者。
 
-### 更多惊人数字
+### 2.5 v1/v2 dual-write 是迁移失败的尾巴
 
-| 数字 | 含义 | 影响 |
-|------|------|------|
-| **20 模块** | 循环依赖的最大 SCC | 无法独立理解、测试、替换 |
-| **16 处** | "临时"TODO(v2) 标记 | 存在超过 1 年，没人删除 |
-| **100+** | Open GitHub Issues | 20 个崩溃、11 个性能问题 |
-| **$83,000/年** | 额外开发者时间成本 | 因技术债务导致的效率损失 |
-| **21 天** | "stupid dogshit" 注释年龄 | 开发者自己都知道，但没人改 |
-```
+`TODO(v2)` 共有 16 处，集中在：
 
-**解读**:
-- **红色区域** (>10 分): 巨型文件、any 类型、v1/v2 双写
-- **黄色区域** (5-10 分): 深层嵌套、已废弃 API、测试质量
-- **绿色区域** (<5 分): TODO/FIXME、模块耦合、无测试包
+| 文件 | 数量 | 含义 |
+|---|---:|---|
+| `packages/opencode/src/session/processor.ts` | 14 | streaming processor 中多处事件双写 |
+| `packages/opencode/src/session/prompt.ts` | 2 | prompt/synthetic message 事件双写 |
 
-**结论**: 92.4 分中 **45 分来自三个红色区域**（巨型文件、any 泛滥、v2 双写）。这不是"到处都有问题"，而是"三个地方烂到家"。
+典型片段：
 
-### 技术债务热力图
-
-```mermaid
-quadrantChart
-  title 技术债务热力图
-  x-axis "影响范围小" --> "影响范围大"
-  y-axis "修复成本低" --> "修复成本高"
-  quadrant-1 "高风险高成本"
-  quadrant-2 "高风险低成本"
-  quadrant-3 "低风险低成本"
-  quadrant-4 "低风险高成本"
-  "巨型文件": [0.8, 0.9]
-  "any 类型": [0.9, 0.7]
-  "v1/v2 双写": [0.7, 0.8]
-  "深层嵌套": [0.6, 0.5]
-  "已废弃 API": [0.4, 0.3]
-  "测试质量": [0.5, 0.6]
-  "TODO/FIXME": [0.2, 0.1]
-  "模块耦合": [0.3, 0.4]
-  "无测试包": [0.1, 0.2]
-```
-
-**解读**:
-- **象限 1 (高风险高成本)**: 巨型文件、v1/v2 双写
-- **象限 2 (高风险低成本)**: any 类型
-- **象限 3 (低风险低成本)**: TODO/FIXME、无测试包
-- **象限 4 (低风险高成本)**: 深层嵌套、已废弃 API
-
-**结论**: 优先处理象限 1 和象限 2 的问题，可以获得最大的 ROI。
-
-### 代码质量趋势图
-
-```mermaid
-xychart-beta
-  title "OpenCode 代码质量趋势 (2024-2026)"
-  x-axis ["2024 Q3", "2024 Q4", "2025 Q1", "2025 Q2", "2025 Q3", "2025 Q4", "2026 Q1", "2026 Q2"]
-  y-axis "债务评分" 0 --> 100
-  line [20, 35, 55, 75, 85, 90, 92, 92.4]
-```
-
-**解读**:
-- **2024 Q3**: 项目启动，债务评分 20（健康水平）
-- **2025 Q1**: v2 迁移开始，债务评分 55（开始恶化）
-- **2025 Q3**: 社区反馈开始，债务评分 85（危机加深）
-- **2026 Q2**: 现在，债务评分 92.4（技术债务危机）
-
-**结论**: OpenCode 的技术债务在 2 年内增长了 **4.6 倍**（从 20 到 92.4）
-
----
-- 脚手架 1: v1 和 v2 两套系统同时跑（16 处"临时"双写标记）
-- 脚手架 2: 20 个模块的循环依赖（config ↔ lsp ↔ session ↔ config）
-- 脚手架 3: 19 个 v0.x 不稳定依赖（核心 PTY 功能的 API 随时可能变）
-- 脚手架 4: 4 个补丁包（solid-js、photon-node、standard-openapi、npmcli/agent）
-- 脚手架 5: 754 处 `any` 类型（编译器形同虚设）
-- 脚手架 6: 647 个重复代码块（复印机坏了）
-- 脚手架 7: 212 个非空断言（运行时炸弹）
-
-**墙在哪？** 在 1,780 行的 `prompt.ts` 里，在 1,536 行的 `Effect.gen` 函数里，在 760 行有 118 次 `any` 的 `anthropic.ts` 里。
-
-**地基在哪？** 在 20 模块的循环依赖里，在 19 个 v0.x 不稳定依赖里，在 4 个补丁包里。
-**开发商在哪？** 在 GitHub Issues 里，处理着 100+ 个 open issues，其中 20 个是崩溃报告。
-
-**一句话总结**: OpenCode 是一个用 214K 行代码证明了"如何把简单事情搞复杂"的项目。它的技术债务评分是 92.4/100，比一个刚毕业的大学生写的第一个项目还糟糕。它的开发者自己都知道代码烂，但没人改。
-
-**最后一击**: `transform.ts` 的第 62 行写着：
-
-```typescript
-// TODO: fix this stupid inefficient dogshit function
-```
-
-这个注释是 **Aiden Cline** 在 2026-05-05 加的（commit `6409aceb1`，PR #25934）。**21 天了，没人改。**
-
-**开发者自己都知道这个函数烂，但没人改。**
-
-**这就是 OpenCode 的现状。**
-**开发商在哪？** 在 GitHub Issues 里，处理着 100+ 个 open issues，其中 20 个是崩溃报告。
-- 脚手架 2: 20 个模块的循环依赖（config ↔ lsp ↔ session ↔ config）
-- 脚手架 3: 19 个 v0.x 不稳定依赖（核心 PTY 功能的 API 随时可能变）
-- 脚手架 4: 4 个补丁包（solid-js、photon-node、standard-openapi、npmcli/agent）
-
-**墙在哪？** 在 1,780 行的 `prompt.ts` 里，在 1,536 行的 `Effect.gen` 函数里，在 760 行有 118 次 `any` 的 `anthropic.ts` 里。
-
----
-**墙在哪？** 在 1,780 行的 `prompt.ts` 里，在 1,536 行的 `Effect.gen` 函数里，在 760 行有 118 次 `any` 的 `anthropic.ts` 里。
-**地基在哪？** 在 20 模块的循环依赖里，在 19 个 v0.x 不稳定依赖里，在 4 个补丁包里。
-**开发商在哪？** 在 GitHub Issues 里，处理着 100+ 个 open issues，其中 20 个是崩溃报告。
-
-**一句话总结**: OpenCode 是一个用 214K 行代码证明了"如何把简单事情搞复杂"的项目。它的技术债务评分是 92.4/100，比一个刚毕业的大学生写的第一个项目还糟糕。它的开发者自己都知道代码烂，但没人改。
-
-**假设**: 一个中级开发者（$80/小时）要修改 `prompt.ts`
-
-| 步骤 | 时间 | 成本 |
-| 巨型文件 (>1000 LOC) | 🔴 高 | 15.0/15 | 18 个文件超 1000 行 |
-| `any` 类型泛滥 | 🔴 高 | 15.0/15 | 754 处，zen provider 占 276 |
-| v1/v2 session 双写 | 🔴 高 | 15.0/15 | 4 个文件, 23 处 flag 引用, 16 处 TODO(v2) |
-| 理解 1,536 行 Effect.gen | 3 小时 | $240 |
-| 理解 v1/v2 双写逻辑 | 1 小时 | $80 |
-| 理解循环依赖关系 | 1 小时 | $80 |
-| 跑 3,812 行测试 | 0.5 小时 | $40 |
-| 实际修改代码 | 2 小时 | $160 |
-| 同步 v1/v2 两条路径 | 1 小时 | $80 |
-| 修复 skill discovery 测试 | 2 小时 | $160 |
-| **总计** | **16.5 小时** | **$1,320** |
-
-**对比**: 一个架构良好的项目，同样的修改只需要 **2 小时**（$160）
-
-**差距**: **8.25 倍**的时间成本
-
-### 测试维护成本
-
-**假设**: 每周有 3 个 PR 需要修改测试
-
-| 测试类型 | 平均修改时间 | 周成本 |
-|----------|-------------|--------|
-| `transform.test.ts`（3,812 行） | 4 小时 | $960 |
-| 其他巨型测试（16 个） | 2 小时 | $480 |
-| 脆弱测试（5 个） | 1 小时 | $240 |
-| **总计** | **7 小时/周** | **$1,680/周** |
-
-**年成本**: $87,360（假设 52 周）
-
-**对比**: 一个测试良好的项目，测试维护成本应该是 **$10,000/年** 以下
-
-### 依赖维护成本
-
-**假设**: 每个 v0.x 依赖每年有 2 次 breaking change
-
-| 依赖 | 每次修复时间 | 年成本 |
-|------|-------------|--------|
-| `bun-pty` | 8 小时 | $1,280 |
-| `@agentclientprotocol/sdk` | 4 小时 | $640 |
-| `partial-json` | 2 小时 | $320 |
-| 其他 16 个 v0.x | 2 小时 × 16 | $5,120 |
-| **总计** | **40 小时/年** | **$6,400/年** |
-
-**对比**: 一个依赖稳定的项目，依赖维护成本应该是 **$500/年** 以下
-
-### 总拥有成本（3 年）
-
-| 成本项 | OpenCode | 行业最佳 | 差距 |
-|--------|----------|----------|------|
-| 开发者时间 | $1,320/次 | $160/次 | 8.25x |
-| 测试维护 | $87,360/年 | $10,000/年 | 8.7x |
-| 依赖维护 | $6,400/年 | $500/年 | 12.8x |
-| **3 年总计** | **$281,280** | **$31,500** | **8.9x** |
-
-**结论**: OpenCode 的技术债务每年要多花 **$83,000** 的开发者时间
-
----
-## 第二层：The Autopsy —— 用数据做可视化尸检报告
-
-### 2.1 债务热力图
-
-| 债务维度 | 严重度 | 得分 | 影响范围 |
-|----------|--------|------|----------|
-| 巨型文件 (>1000 LOC) | 🔴 高 | 15.0/15 | 16 个文件超 1000 行 |
-| `any` 类型泛滥 | 🔴 高 | 15.0/15 | 754 处，zen provider 占 276 |
-| v1/v2 session 双写 | 🔴 高 | 15.0/15 | 4 个文件, 23 处 flag 引用, 16 处 TODO(v2) |
-| 深层嵌套 (>4 级缩进) | 🟡 中 | 10.0/10 | 3,693 行 |
-| 已废弃 API | 🟡 中 | 10.0/10 | 20 个 @deprecated |
-| 测试质量 | 🟡 中 | 10.0/10 | 5 个脆弱测试，17 个巨型测试 |
-| TODO/FIXME 标记 | 🟢 低 | 7.2/10 | 18 个真实标记 |
-| 模块耦合 | 🟢 低 | 6.0/10 | 3 个高耦合文件 |
-| 无测试包 | 🟢 低 | 5.0/5 | 5 个包 |
-
-**关键结论**: 92.4 分中 **45 分来自三个满分维度**（巨型文件、any 泛滥、v2 双写）。这不是"到处都有问题"，而是"三个地方烂到家"。
-
-### 2.2 Top 5 最离谱的文件
-
-#### **#1: `session/prompt.ts` —— 1,780 行的"上帝文件"**
-
-```typescript
-// 63 个 import，63 个依赖，63 个理由说明这个文件承担了太多职责
-import { ... } from "@/session"
-import { ... } from "@/provider"
-import { ... } from "@/tool"
-// ... 60 more imports
-```
-
-- **行数**: 1,780 行（相当于一本中篇小说）
-- **Import 数**: 63 个（全项目最高）
-- **Effect.gen 函数**: 1,536 行（占文件的 **86%**）
-- **职责**: system prompt 组装、tool 定义构建、消息历史处理、结构化输出创建、**双写迁移代码**
-
-**一个文件干了 5 件事，你敢改第一章吗？**
-
-#### **#2: `provider/transform.ts` —— 开发者自己都知道烂**
-
-```typescript
-// TODO: fix this stupid inefficient dogshit function
-```
-
-这个注释是 **Aiden Cline** 在 2026-05-05 加的（commit `6409aceb1`，PR #25934）。21 天了，没人改。
-
-- **行数**: 1,384 行
-- **问题**: 281 行的 `normalizeMessages` 函数处理：
-  - Unicode surrogate 清理
-  - Deepseek 特殊兼容
-  - 交错 reasoning 提取
-  - 消息缓存
-  
-**一个函数干了 4 件事，开发者自己都说是"stupid inefficient dogshit"。**
-
-#### **#3: `console/.../provider/anthropic.ts` —— 760 行有 118 次 `any`**
-
-```typescript
-for (const m of inMsgs) {
-  if (!m || !(m as any).role) continue
-  if ((m as any).role === "user") {
-    const partsIn = Array.isArray((m as any).content) ? (m as any).content : []
-    const partsOut: any[] = []
-    for (const p of partsIn) {
-      if (!p || !(p as any).type) continue
-      if ((p as any).type === "text" && typeof (p as any).text === "string")
-        partsOut.push({ type: "text", text: (p as any).text })
-      // ... 每一行都有 (x as any)
-    }
-  }
-}
-```
-
-- **行数**: 760 行
-- **`as any` 次数**: 95 次
-- **`any` 引用次数**: 118 次
-- **密度**: 每 **8 行**就有一次 `as any`
-
-**TypeScript 的本意是类型安全，这个文件的解法是 `as any`。**
-
-#### **#4: `console/.../provider/openai.ts` —— 629 行有 124 次 `any`**
-
-```typescript
-const toImg = (p: any) => {
-  if (!p || typeof p !== "object") return undefined
-  if ((p as any).type === "image_url" && (p as any).image_url)
-    return { type: "image_url", image_url: (p as any).image_url }
-  // ... 参数已经是 any 了，还写 (p as any)
-}
-```
-
-- **行数**: 629 行
-- **`as any` 次数**: 105 次
-- **`any` 引用次数**: 124 次
-- **密度**: 每 **6 行**就有一次 `as any`（全项目最高）
-
-**参数已经是 `any` 了，还要写 `(p as any)` —— 这是 `any` 的平方。**
-
-#### **#5: `provider/provider.ts` —— 1,882 行的"SDK 适配器"**
-
-```typescript
-type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
-
-function useLanguageModel(sdk: any) {
-  return sdk.responses === undefined && sdk.chat === undefined
-}
-
-function selectAzureLanguageModel(sdk: any, modelID: string, useChat: boolean) {
-  if (useChat && sdk.chat) return sdk.chat(modelID)
-  if (sdk.responses) return sdk.responses(modelID)
-  // ... 12 个函数都用 sdk: any
-}
-```
-
-- **行数**: 1,882 行
-- **`any` 引用次数**: 34 次
-- **问题**: 12 个函数都用 `sdk: any`，核心抽象完全无类型
-
-**SDK 的核心接口是 `any`，这就像建房子不打地基。**
-
-### 2.3 三个"满分维度"详解（每个 15 分，共 45/92.4）
-
-#### **维度 1: 巨型文件（15/15 分）**
-
-**数据**: 18 个文件超过 1000 行
-
-**最严重的**:
-- `prompt.ts`: 1,780 行（63 个 import，Effect.gen 占 86%）
-- `lsp/server.ts`: 2,064 行
-- `acp/agent.ts`: 1,966 行
-- `provider.ts`: 1,882 行
-- `copilot SDK`: 1,770 行
-
-**比喻**: "一个文件 2000 行，相当于一本小说，你敢改第一章吗？"
-
-**影响**:
-- 无法独立理解（需要读完 2000 行才能知道它干了什么）
-- 无法独立测试（一个测试文件 3,812 行，比源文件还长）
-- 无法独立重构（改一行可能影响 63 个依赖）
-
-#### **维度 2: `any` 类型泛滥（15/15 分）**
-
-**数据**: 754 处 `any`（493 处在源码，261 处在测试）
-
-**分布**:
-- console 包: 321 次（273 次在 zen provider 的 3 个文件）
-- opencode 包: 335 次
-- core 包: 20 次
-- 其他: 41 次
-
-**最严重的**:
-- `openai.ts`: 124 次 `any`（每 6 行一次）
-- `anthropic.ts`: 118 次 `any`（每 8 行一次）
-- `transform.ts`: 15 次 `any`（开发者自己说是"dogshit"）
-
-**比喻**: "TypeScript 的本意是类型安全，OpenCode 的解法是 `as any`"
-
-**影响**:
-- 编译器形同虚设（类型错误只在运行时暴露）
-- 重构恐惧（改一个类型可能影响 754 个地方）
-- IDE 支持瘫痪（自动补全、跳转定义都失效）
-
-#### **维度 3: v1/v2 双写迁移（15/15 分）**
-
-**数据**: 16 处 `TODO(v2)` 标记 + 23 处 `experimentalEventSystem` 引用
-
-**分布**:
-- `processor.ts`: 13 处
-- `prompt.ts`: 2 处
-- `compaction.ts`: 2 处
-- `cli/tui/plugin/internal.ts`: 1 处
-
-**代码示例**:
-```typescript
+```ts
 // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
-if (Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM) {
-  yield* sync.run(SessionEvent.Reasoning.Started.Sync, { ... })
-}
-// ... 然后是 v1 写入路径
-```
-
-**比喻**: "两个系统同时跑，修 bug 要改两遍，这是加班的最佳借口"
-
-**影响**:
-- 每次 bug fix 必须同步 v1/v2 两条路径
-- `processor.ts` 每个 case 分支增长约 30%
-- 4 个文件依赖同一个全局 flag，形成一个隐式的分支点
-
-**Git 历史证据**: 这 16 处"临时"标记已经存在了多久？从 commit 历史看，最早的一批是 2025 年加的——**超过 1 年了**。
-
-### 2.4 循环依赖图（20 模块 SCC）
-
-```mermaid
-graph LR
-  subgraph "SCC 1: 20 模块死循环"
-    A[config/config] --> B[lsp/lsp]
-    B --> C[project/instance-context]
-    C --> D[project/project]
-    D --> E[session/session.sql]
-    E --> F[session/message-v2]
-    F --> B
-    
-    A --> G[config/flag]
-    G --> H[session/session]
-    H --> I[session/processor]
-    I --> J[session/prompt]
-    J --> K[tool/registry]
-    K --> L[tool/task]
-    L --> J
-    
-    H --> M[session/compaction]
-    M --> N[storage/storage]
-    N --> A
-    
-    B --> O[lsp/client]
-    O --> P[project/workspace]
-    P --> Q[effect/app-runtime]
-    Q --> A
-  end
-  
-  style A fill:#ff6b6b
-  style B fill:#ff6b6b
-  style H fill:#ff6b6b
-  style J fill:#ff6b6b
-```
-**Issue #16450**: "Plugin config files in ~/.config/opencode/ deleted when multiple instances run concurrently"
-> Non-package files in ~/.config/opencode/ are intermittently deleted when multiple opencode instances start concurrently. Concurrent bun install processes interfere and delete non-package files.
----
-### 3.2 开发者吐槽（Git 历史证据）
-#### **"stupid inefficient dogshit" 事件**
-- **时间**: 2026-05-05 18:07:23
-- **作者**: Aiden Cline
-- **Commit**: `6409aceb1` (PR #25934: "fix: sanitize surrogates")
-- **内容**: `// TODO: fix this stupid inefficient dogshit function`
-- **年龄**: 21 天（至今未修复）
-**开发者自己都知道这个函数烂，但没人改。**
-#### **Revert-Reapply 循环（浪费 4 个 commit）**
-**事件**: "fix(app): startup efficiency (#18854)"
-```
-546748a46 (2026-03-24 09:10) - Original fix
-a379eb386 (2026-03-24 18:36) - Revert
-0dbfefa08 (2026-03-24 18:49) - Reapply
-898456a25 (2026-03-25 06:23) - Revert again
-1041ae91d (2026-03-25 06:25) - Reapply again
-```
-
-**27 小时内，同一个功能被 revert 了 2 次，reapply 了 2 次。**
-
-#### **WIP Commit（未完成的工作）**
-
-```
-ba499fb40 (2026-04-13 16:54) - wip
-```
-
-一个只有 "wip" 的 commit，提交到主分支。
-
-#### **Lazy Commit Messages（8 个）**
-
-```
-caa0a2882 (2026-01-13 13:56) - Sync
-afdae3950 (2026-05-26 13:41) - sync
-165481813 (2026-04-09 12:32) - events
-2d037966f (2026-03-25 23:10) - add note
-33a831d2b (2025-05-29 10:21) - rework types
-04337f620 (2026-01-26 13:03) - chore: cleanup
-2b3ddf9f3 (2026-05-25 18:18) - chore: cleanup
-```
-
-**Commit message 是给未来的自己和同事看的，这些 message 什么都没说。**
-
-#### **Accidental Commit（意外提交）**
-
-```
-72d7cb717 (2026-04-17 00:42:45) - remove accidental commit of daytona plugin (#23030)
-```
-
-**有人不小心把 daytona plugin 提交到主分支了。**
-
-### 3.3 统计数据
-
-#### **Issue 统计**
-
-- **Open Issues**: 100+
-- **Crash Reports**: 20 个
-- **Performance Issues**: 11 个
-- **V2 Transition Bugs**: 6 个
-- **Skill Discovery Problems**: 7 个
-- **Config Architecture Requests**: 8 个
-
-#### **PR 统计**
-
-- **Community PRs fixing bugs**: 10 个
-- **PRs fixing V2 regressions**: 4 个
-
-#### **Git 历史统计**
-
-- **Total commits on dev**: 13,428
-- **TODO(v2) markers**: 16 个（"临时"标记超过 1 年）
-- **Type suppressions**: 15 个（`@ts-ignore` + `@ts-expect-error`）
-- **Stale TODOs**: 31 个（包括 "// TODO: remove this hack"）
-
-### 3.4 更多社区声音
-
-#### **性能投诉（用户流失风险）**
-
-**Issue #27106**: "The latest version is terribly slow"
-> Latest version (1.14.48) is super slow - practically unusable. **User considering moving away from opencode.** Happens across all providers.
-
-**Issue #24771**: "Opencode severe performance issues"
-> Sometimes works fine, then becomes super slow - even 'Hey there' takes 10 minutes. Happens in new sessions across all providers. **Team considering moving away from opencode.**
-
-**Issue #26263**: "Extremely slow performance with OpenCode on Ubuntu"
-> Extremely slow performance reported on Ubuntu.
-
-**Issue #27027**: "Skill discovery follows symlinks into large directories, causing 120s+ startup on slow filesystems"
-> External skill discovery uses Bun.Glob with followSymlinks:true. Skill dirs with symlinks to large trees cause 122s cold starts (vs 0.58s without). Affects NFS, WSL /mnt, SMB, sshfs.
-
-#### **数据丢失（最严重的问题）**
-
-**Issue #25953**: "Edit tool corrupts Python indentation in v1.14.39 (silent data loss)"
-> Edit tool systematically corrupts Python file indentation when editing inside indented blocks. Tool reports success but file on disk has incorrect indentation. **Critical data loss bug - 100% failure rate on affected patterns.**
-
-**Issue #16450**: "Plugin config files in ~/.config/opencode/ deleted when multiple instances run concurrently"
-> Non-package files in ~/.config/opencode/ are intermittently deleted when multiple opencode instances start concurrently. **Concurrent bun install processes interfere and delete non-package files.**
-
-#### **V2 过渡期回归（功能缺失）**
-
-**Issue #28686**: "Desktop V2 UI hides prompt controls and status popover"
-> V2 prompt composer no longer shows agent selector or model variant/thinking-effort selector. **Status popover only reachable from legacy session header path.**
-
-**Issue #29051**: "V2 prompt input hides model reasoning selector"
-> V2 prompt input shows selected model but does not render model variant selector. **For models with reasoning variants like GPT-5.5, users cannot change reasoning level.**
-
-#### **Skill Discovery 崩溃（可靠性问题）**
-
-**Issue #27638**: "fix(skill): circular symlinks in external skill dirs cause ENAMETOOLONG crash on Bun runtime"
-> Circular/broken symlinks in skill dirs cause ENAMETOOLONG crash. **Glob with follow:true enters infinite recursion.** Node.js handles gracefully, Bun does not.
-
-**Issue #20940**: "Plugin config() hook mutations to skills.paths invisible to skill discovery"
-> Plugin config() hooks mutate skills.paths but Skill.all() never finds them. **Each service creates separate InstanceState scope via ScopedCache, so mutations are invisible across scopes.**
-
-#### **配置架构痛苦（用户体验问题）**
-
-**Issue #19353**: "[FEATURE]: for splitting config across multiple files"
-> Want to split opencode.jsonc into separate files. **Single config file gets long and messy with many MCP servers, agent configs, provider settings.** Request for 'extends' field to reference other JSON/JSONC files.
-
-**Issue #9062**: "[FEATURE]: support config.d/ directory for modular configuration"
-> Request for config.d/ directory pattern for modular configuration.
-
-**Issue #28600**: "[FEATURE]: centralize persistent state and document all config/cache paths"
-> Request to centralize persistent state and document all config/cache paths.
-
-#### **开发者心声总结**
-
-**用户在流失**:
-- "User considering moving away from opencode" (Issue #27106)
-- "Team considering moving away from opencode" (Issue #24771)
-
-**数据在丢失**:
-- "Critical data loss bug - 100% failure rate" (Issue #25953)
-- "Concurrent bun install processes interfere and delete non-package files" (Issue #16450)
-
-**功能在退化**:
-- "V2 prompt composer no longer shows agent selector" (Issue #28686)
-- "Users cannot change reasoning level" (Issue #29051)
-
-**可靠性在下降**:
-- "Glob with follow:true enters infinite recursion" (Issue #27638)
-- "Crashes entire sidecar process" (Issue #26667)
-
-**结论**: OpenCode 的社区反馈不是"小问题"，而是"核心功能崩溃"、"数据丢失"、"用户流失"。这是一个正在恶化的项目。
-
----
-
-### 3.1 真实的用户抱怨
-
-#### **崩溃报告（20 个 open issues）**
-
-**Issue #22883**: "[BUG] OpenCode crashes on long sessions (OOM Kill)"
-> OpenCode crashes when running for extended periods. Process is killed by OS OOM killer when RAM usage hits 100%. Crashes worsened after update to v1.4.6. Session length at crash: 50+ messages.
-
-**Issue #28830**: "[bug] On WSL2, always crash exit"
-> MaxListenersExceededWarning: event listener leak on HL (Hyperlink) EventTarget. The effect library scheduler adds addEventListener without removeEventListener, causing listener accumulation past default limit of 10. Crashes on WSL2 Ubuntu.
-
-**Issue #26667**: "[BUG]: session.processor crashes sidecar on unhandled AbortError"
-> session.processor does not gracefully handle AbortError from LLM streaming. When stream interrupted (network timeout, API disconnection), unhandled AbortError propagates up Effect.js fiber stack and crashes entire sidecar process.
-
-**Issue #25953**: "Edit tool corrupts Python indentation in v1.14.39 (silent data loss)"
-> Edit tool systematically corrupts Python file indentation when editing inside indented blocks. Tool reports success but file on disk has incorrect indentation. Critical data loss bug - 100% failure rate on affected patterns.
-
-#### **性能投诉（11 个 open issues）**
-
-**Issue #27106**: "The latest version is terribly slow"
-> Latest version (1.14.48) is super slow - practically unusable. User considering moving away from opencode. Happens across all providers.
-
-**Issue #24771**: "Opencode severe performance issues"
-> Sometimes works fine, then becomes super slow - even 'Hey there' takes 10 minutes. Happens in new sessions across all providers. **Team considering moving away from opencode.**
-
-**Issue #27027**: "Skill discovery follows symlinks into large directories, causing 120s+ startup on slow filesystems"
-> External skill discovery uses Bun.Glob with followSymlinks:true. Skill dirs with symlinks to large trees cause 122s cold starts (vs 0.58s without). Affects NFS, WSL /mnt, SMB, sshfs.
-
-#### **V2 过渡期回归（6 个 open issues）**
-
-**Issue #28686**: "Desktop V2 UI hides prompt controls and status popover"
-> V2 prompt composer no longer shows agent selector or model variant/thinking-effort selector. Status popover only reachable from legacy session header path.
-
-**Issue #29051**: "V2 prompt input hides model reasoning selector"
-> V2 prompt input shows selected model but does not render model variant selector. For models with reasoning variants like GPT-5.5, users cannot change reasoning level.
-
-#### **Skill Discovery 崩溃（7 个 open issues）**
-
-**Issue #27638**: "fix(skill): circular symlinks in external skill dirs cause ENAMETOOLONG crash on Bun runtime"
-> Circular/broken symlinks in skill dirs cause ENAMETOOLONG crash. Glob with follow:true enters infinite recursion. Node.js handles gracefully, Bun does not.
-
-**Issue #20940**: "Plugin config() hook mutations to skills.paths invisible to skill discovery"
-> Plugin config() hooks mutate skills.paths but Skill.all() never finds them. Each service creates separate InstanceState scope via ScopedCache, so mutations are invisible across scopes.
-
-#### **配置架构痛苦（8 个 open issues）**
-
-**Issue #19353**: "[FEATURE]: for splitting config across multiple files"
-> Want to split opencode.jsonc into separate files. Single config file gets long and messy with many MCP servers, agent configs, provider settings. Request for 'extends' field to reference other JSON/JSONC files.
-
-**Issue #16450**: "Plugin config files in ~/.config/opencode/ deleted when multiple instances run concurrently"
-> Non-package files in ~/.config/opencode/ are intermittently deleted when multiple opencode instances start concurrently. Concurrent bun install processes interfere and delete non-package files.
-
-### 3.2 开发者吐槽（Git 历史证据）
-
-#### **"stupid inefficient dogshit" 事件**
-
-- **时间**: 2026-05-05 18:07:23
-- **作者**: Aiden Cline
-- **Commit**: `6409aceb1` (PR #25934: "fix: sanitize surrogates")
-- **内容**: `// TODO: fix this stupid inefficient dogshit function`
-- **年龄**: 21 天（至今未修复）
-
-**开发者自己都知道这个函数烂，但没人改。**
-
-#### **Revert-Reapply 循环（浪费 4 个 commit）**
-
-**事件**: "fix(app): startup efficiency (#18854)"
-
-```
-546748a46 (2026-03-24 09:10) - Original fix
-a379eb386 (2026-03-24 18:36) - Revert
-0dbfefa08 (2026-03-24 18:49) - Reapply
-898456a25 (2026-03-25 06:23) - Revert again
-1041ae91d (2026-03-25 06:25) - Reapply again
-```
-
-**27 小时内，同一个功能被 revert 了 2 次，reapply 了 2 次。**
-
-#### **WIP Commit（未完成的工作）**
-
-```
-ba499fb40 (2026-04-13 16:54) - wip
-```
-
-一个只有 "wip" 的 commit，提交到主分支。
-
-#### **Lazy Commit Messages（8 个）**
-
-```
-caa0a2882 (2026-01-13 13:56) - Sync
-afdae3950 (2026-05-26 13:41) - sync
-165481813 (2026-04-09 12:32) - events
-2d037966f (2026-03-25 23:10) - add note
-33a831d2b (2025-05-29 10:21) - rework types
-04337f620 (2026-01-26 13:03) - chore: cleanup
-2b3ddf9f3 (2026-05-25 18:18) - chore: cleanup
-```
-
-**Commit message 是给未来的自己和同事看的，这些 message 什么都没说。**
-
-#### **Accidental Commit（意外提交）**
-
-```
-72d7cb717 (2026-04-17 00:42:45) - remove accidental commit of daytona plugin (#23030)
-```
-
-**有人不小心把 daytona plugin 提交到主分支了。**
-
-### 3.3 统计数据
-
-#### **Issue 统计**
-
-- **Open Issues**: 100+
-- **Crash Reports**: 20 个
-- **Performance Issues**: 11 个
-- **V2 Transition Bugs**: 6 个
-- **Skill Discovery Problems**: 7 个
-- **Config Architecture Requests**: 8 个
-
-#### **PR 统计**
-
-- **Community PRs fixing bugs**: 10 个
-- **PRs fixing V2 regressions**: 4 个
-
-#### **Git 历史统计**
-
-- **Total commits on dev**: 13,428
-- **TODO(v2) markers**: 16 个（"临时"标记超过 1 年）
-- **Type suppressions**: 15 个（`@ts-ignore` + `@ts-expect-error`）
-- **Stale TODOs**: 31 个（包括 "// TODO: remove this hack"）
-
-
-## 3.4 开发者体验 —— 真实的开发痛苦
-
-### 场景 1: 修改一个配置
-
-**目标**: 添加一个新的 provider 配置项
-
-**实际步骤**:
-1. 修改 `config/config.ts`（添加字段）
-2. 修改 `config/schema.ts`（添加验证）
-3. 修改 `config/default.ts`（添加默认值）
-4. 修改 `provider/provider.ts`（读取配置）
-5. 修改 `provider/transform.ts`（使用配置）
-6. 修改 `session/prompt.ts`（传递配置）
-7. 修改 `cli/cmd/tui/plugin/internal.ts`（UI 展示）
-8. 跑 3 个测试套件
-9. 祈祷没有循环依赖
-
-**预期步骤**（架构良好的项目）:
-1. 修改 `config.ts`（添加字段 + 验证 + 默认值）
-2. 修改 `provider.ts`（读取 + 使用配置）
-3. 跑 1 个测试套件
-
-**差距**: 9 步 vs 3 步（**3 倍**）
-
-### 场景 2: 修复一个 bug
-
-**目标**: 修复 `processor.ts` 中的一个 bug
-
-**实际步骤**:
-1. 阅读 `processor.ts`（1,200 行）
-2. 发现 bug 在 v1 路径
-3. 修复 v1 路径
-4. 发现还有 v2 路径（因为 `Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM`）
-5. 修复 v2 路径
-6. 发现 `prompt.ts` 也有相关代码
-7. 修复 `prompt.ts`
-8. 发现 `compaction.ts` 也有相关代码
-9. 修复 `compaction.ts`
-10. 跑测试，发现 5 个 skill discovery 测试挂了
-11. 修复 skill discovery 测试
-12. 跑测试，发现 3 个 llm 测试挂了（缺环境变量）
-13. 跳过 llm 测试
-14. 提交 PR
-
-**预期步骤**（架构良好的项目）:
-1. 阅读 `processor.ts`（200 行）
-2. 修复 bug
-3. 跑测试
-4. 提交 PR
-
-**差距**: 14 步 vs 4 步（**3.5 倍**）
-
-### 场景 3: 添加一个新功能
-
-**目标**: 添加一个新的 tool 类型
-
-**实际步骤**:
-1. 阅读 `tool/registry.ts`（理解注册机制）
-2. 阅读 `tool/task.ts`（理解现有 tool）
-3. 阅读 `tool/read.ts`（理解另一个现有 tool）
-4. 阅读 `tool/apply_patch.ts`（理解第三个现有 tool）
-5. 发现 3 个文件有大量重复代码（647 个重复块）
-6. 复制一个现有 tool 的代码
-7. 修改代码
-8. 阅读 `session/prompt.ts`（理解 tool 如何被使用）
-9. 阅读 `session/processor.ts`（理解 tool 如何被调用）
-10. 阅读 `session/compaction.ts`（理解 tool 如何被压缩）
-11. 跑测试
-
-**预期步骤**（架构良好的项目）:
-1. 阅读 `tool/registry.ts`（理解注册机制）
-2. 创建新 tool 文件
-3. 实现 tool
-4. 跑测试
-
-**差距**: 11 步 vs 4 步（**2.75 倍**）
-
-### 开发者心声（从 GitHub Issues 提取）
-
-**Issue #27106**: "The latest version is terribly slow"
-> User considering moving away from opencode.
-
-**Issue #24771**: "Opencode severe performance issues"
-> Team considering moving away from opencode.
-
-**Issue #25953**: "Edit tool corrupts Python indentation in v1.14.39 (silent data loss)"
-> Critical data loss bug - 100% failure rate on affected patterns.
-
-**Issue #28830**: "[bug] On WSL2, always crash exit"
-> Crashes on WSL2 Ubuntu.
-
-**Issue #26667**: "[BUG]: session.processor crashes sidecar on unhandled AbortError"
-> Crashes entire sidecar process.
-
-**总结**: 开发者在用 OpenCode 时，遇到的不是"小问题"，而是"核心功能崩溃"和"数据丢失"。
-
----
-## 第四层：Technical Deep Dive —— 资深开发者看到会"会心一笑"（或者"会心一痛"）
-
-### 4.1 架构反模式集锦
-
-#### **反模式 1: "The God Object"（上帝对象）**
-
-**代表文件**: `session/prompt.ts`
-
-一个文件同时负责：
-1. System prompt 组装
-2. Tool 定义构建
-3. 消息历史处理
-4. 结构化输出创建
-5. 双写迁移代码
-
-**比喻**: "用大炮打蚊子，蚊子死了，但墙也塌了"
----
-### 4.6 Effect-TS 过度使用 —— 真实代码案例
-
-#### **案例 1: 读取一个 JSON 文件**
-
-**Before (OpenCode 的做法)**:
-```typescript
-export const ConfigLive = Layer.effect(
-  Config,
-  Effect.gen(function* (_) {
-    const file = yield* _.promise(Bun.file("opencode.json").json())
-    return { ...file }
-  })
-)
-```
-
-**After (简单做法)**:
-```typescript
-const config = JSON.parse(await Bun.file("opencode.json").text())
-```
-
-**问题**: 读一个 JSON 文件，为什么要用 Effect？直接 `JSON.parse` 不行吗？
-
-**影响**:
-- 新人学习成本高（需要理解 Effect.gen、yield*、Layer）
-- 调试困难（Effect 的 stack trace 不直观）
-- 性能开销（Effect 的调度器有开销）
-
-#### **案例 2: 一个简单的配置验证**
-
-**Before (OpenCode 的做法)**:
-```typescript
-export const ConfigSchema = Schema.struct({
-  provider: Schema.string,
-  model: Schema.string,
-  apiKey: Schema.string,
-})
-
-export const ConfigLive = Layer.effect(
-  Config,
-  Effect.gen(function* (_) {
-    const raw = yield* _.promise(Bun.file("opencode.json").json())
-    const config = yield* _.promise(Schema.decodeUnknown(ConfigSchema)(raw))
-    return config
-  })
-)
-```
-
-**After (简单做法)**:
-```typescript
-const raw = JSON.parse(await Bun.file("opencode.json").text())
-if (!raw.provider || !raw.model || !raw.apiKey) {
-  throw new Error("Invalid config")
-}
-const config = raw as Config
-```
-
-**问题**: 一个简单的配置验证，为什么要用 Schema？直接 `if` 检查不行吗？
-
-**影响**:
-- 代码膨胀（10 行 vs 3 行）
-- 学习成本高（需要理解 Schema、decodeUnknown）
-- 调试困难（Schema 的错误信息不直观）
-
-#### **案例 3: 一个简单的 HTTP 请求**
-
-**Before (OpenCode 的做法)**:
-```typescript
-export const HttpLive = Layer.effect(
-  Http,
-  Effect.gen(function* (_) {
-    const response = yield* _.promise(fetch("https://api.example.com"))
-    const data = yield* _.promise(response.json())
-    return data
-  })
-)
-```
-
-**After (简单做法)**:
-```typescript
-const response = await fetch("https://api.example.com")
-const data = await response.json()
-```
-
-**问题**: 一个简单的 HTTP 请求，为什么要用 Effect？直接 `fetch` 不行吗？
-
-**影响**:
-- 代码膨胀（5 行 vs 2 行）
-- 学习成本高（需要理解 Effect.gen、yield*、Layer）
-- 调试困难（Effect 的 stack trace 不直观）
-
-#### **案例 4: 一个简单的文件写入**
-
-**Before (OpenCode 的做法)**:
-```typescript
-export const FileLive = Layer.effect(
-  File,
-  Effect.gen(function* (_) {
-    yield* _.promise(Bun.file("output.json").write(JSON.stringify(data)))
-  })
-)
-```
-
-**After (简单做法)**:
-```typescript
-await Bun.file("output.json").write(JSON.stringify(data))
-```
-
-**问题**: 一个简单的文件写入，为什么要用 Effect？直接 `write` 不行吗？
-
-**影响**:
-- 代码膨胀（3 行 vs 1 行）
-- 学习成本高（需要理解 Effect.gen、yield*、Layer）
-- 调试困难（Effect 的 stack trace 不直观）
-
-### Effect-TS 使用统计
-
-| 指标 | 数量 | 说明 |
-|------|------|------|
-| Effect.gen 文件 | 168 | 39% 的源文件使用 Effect.gen |
-| Service 声明 | 66 | 66 个 Service |
-| Layer.effect | 66 | 66 个 Layer |
-| defaultLayer | 58 | 58 个 defaultLayer |
-| app-runtime.ts 导入 | 59 | 59 个 import |
-
-**问题**: 66 个 Service + 66 个 Layer + 58 个 defaultLayer，形成了一个过度工程化的依赖注入体系。
-
-**对比**: 一个好的 Effect 项目应该有 **10-20 个 Service**，而不是 66 个。
-
-### Effect-TS 的正确使用场景
-
-**应该用 Effect 的场景**:
-- 需要错误处理（Effect 的错误处理比 try/catch 更强大）
-- 需要并发控制（Effect 的 Fiber 比 Promise 更灵活）
-- 需要依赖注入（Effect 的 Layer 比手动注入更优雅）
-- 需要取消操作（Effect 的中断比 AbortController 更可靠）
-
-**不应该用 Effect 的场景**:
-- 读取一个 JSON 文件
-- 一个简单的配置验证
-- 一个简单的 HTTP 请求
-- 一个简单的文件写入
-
-**结论**: OpenCode 在 **不应该用 Effect 的场景** 也用了 Effect，导致代码膨胀、学习成本高、调试困难。
-
----
-import { Session } from "@/session"
-import { Provider } from "@/provider"
-import { Tool } from "@/tool"
-import { Config } from "@/config"
-import { LSP } from "@/lsp"
-// ... 58 more imports
-
-// 1,536 行的 Effect.gen 函数
-export const SessionRun = Effect.gen(function* (_) {
-  // ... 1,536 行代码
-})
-```
-
-**影响**: 你无法理解这个文件，除非读完 1,780 行。你无法测试它，除非 mock 63 个依赖。你无法重构它，除非同时改 5 个职责。
-
-**比喻**: "就像一个瑞士军刀，但每个功能都是坏的"
-
-#### **反模式 2: "The Shotgun Surgery"（霰弹枪手术）**
-
-**代表场景**: 改一个 bug 要改 4 个文件
-
-```
-processor.ts  (13 处 TODO(v2))
-prompt.ts     (2 处 TODO(v2))
-compaction.ts (2 处 TODO(v2))
-cli/tui       (1 处 flag 引用)
-```
-
-**代码证据**:
-```typescript
-// processor.ts
-// TODO(v2): Temporary dual-write while migrating session messages to v2 events.
-if (Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM) {
-  yield* sync.run(SessionEvent.Reasoning.Started.Sync, { ... })
-}
-
-// prompt.ts
-// TODO(v2): Temporary dual-write while migrating session messages to v2 events.
-if (Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM) {
-  yield* sync.run(SessionEvent.Message.Created.Sync, { ... })
-}
-
-// compaction.ts (没有 TODO 标记，但用同一个 flag)
-if (Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM) {
-  yield* sync.run(SessionEvent.Compaction.Started.Sync, { ... })
+if (flags.experimentalEventSystem) {
+  // publish SessionEvent.*
 }
 ```
 
-**影响**: 改一个 bug，要改 4 个文件，要同步 v1/v2 两条路径，要祈祷没有遗漏。
+这类代码的问题不是注释难看，而是它把“旧路径是否仍然需要”和“新路径是否完整”留给每个事件分支自行判断。迁移状态没有单一收敛点，导致维护者在 processor、prompt、compaction、TUI debug flag 等路径之间来回切换。
 
-**比喻**: "就像修一个水管，要拆 4 面墙"
+### 2.6 重复块和循环依赖说明抽象边界没有收住
 
-#### **反模式 3: "The Dependency Inversion Inversion"（依赖倒置倒置）**
+自动化指标：
 
-**代表**: config 和 lsp 反向依赖 session 和 project
----
-#### **反模式 6: "The Copy-Paste Programming"（复制粘贴编程）**
+| 指标 | 数值 |
+|---|---:|
+| Duplicate 8-line blocks | 647 |
+| Duplicate instances | 1,418 |
+| Circular dependency SCCs | 5 |
+| Largest SCC | 19 modules |
+| Files importing >15 modules | 3 |
 
-**代表**: 647 个重复 8-line blocks，1,418 个实例
-
-**数据**:
-- 647 个重复块
-- 1,418 个实例
-- 139 个跨文件重复
-
-**最严重的文件**:
-- `acp/agent.ts`: 155 个重复块
-- `provider/transform.ts`: 84 个重复块
-- `lsp/server.ts`: 78 个重复块
-
-**跨文件模式**:
-- `tool/read.ts`、`tool/task.ts`、`tool/apply_patch.ts` 共享 tool 注册模板
-- `session/message.ts`、`message-v2.ts`、`v2/session-event.ts` 共享 Schema 定义
-
-**影响**:
-- 修改一个地方，要同步修改 3 个地方
-- 容易遗漏，导致不一致
-- 代码膨胀，维护成本高
-
-**比喻**: "就像复印机坏了，每张纸都印了 3 遍"
-
-#### **反模式 7: "The Silent Data Corruption"（静默数据损坏）**
-
-**代表**: Issue #25953 - Edit tool corrupts Python indentation
-
-**用户报告**:
-> Edit tool systematically corrupts Python file indentation when editing inside indented blocks. Tool reports success but file on disk has incorrect indentation. Critical data loss bug - 100% failure rate on affected patterns.
-
-**问题**:
-- 工具报告"成功"，但文件已损坏
-- 100% 失败率
-- 影响所有 Python 开发
-
-**影响**:
-- 用户丢失代码
-- 信任度下降
-- 用户流失
-
-**比喻**: "就像银行说转账成功，但钱没了"
-
-#### **反模式 8: "The Memory Leak"（内存泄漏）**
-
-**代表**: Issue #22883 - OOM Kill on long sessions
-
-**用户报告**:
-> OpenCode crashes when running for extended periods. Process is killed by OS OOM killer when RAM usage hits 100%. Crashes worsened after update to v1.4.6. Session length at crash: 50+ messages.
-
-**问题**:
-- 内存持续增长
-- 50+ 消息后崩溃
-- 影响所有长时间会话
-
-**影响**:
-- 用户丢失会话
-- 需要重启应用
-- 工作中断
-
-**比喻**: "就像水龙头没关，水漫金山"
-
-#### **反模式 9: "The Event Listener Leak"（事件监听器泄漏）**
-
-**代表**: Issue #28830 - WSL2 crash
-
-**用户报告**:
-> MaxListenersExceededWarning: event listener leak on HL (Hyperlink) EventTarget. The effect library scheduler adds addEventListener without removeEventListener, causing listener accumulation past default limit of 10. Crashes on WSL2 Ubuntu.
-
-**问题**:
-- Effect.js 调度器添加事件监听器，但不移除
-- 监听器累积超过默认限制（10）
-- 导致崩溃
-
-**影响**:
-- WSL2 用户无法使用
-- 需要重启应用
-- 用户流失
-
-**比喻**: "就像电话线接了 100 个分机，信号断了"
-
-#### **反模式 10: "The Config Nightmare"（配置噩梦）**
-
-**代表**: Issue #16450 - Config files deleted
-
-**用户报告**:
-> Non-package files in ~/.config/opencode/ are intermittently deleted when multiple opencode instances start concurrently. Concurrent bun install processes interfere and delete non-package files.
-
-**问题**:
-- 多个实例同时启动时，配置文件被删除
-- 并发 bun install 进程干扰
-- 数据丢失
-
-**影响**:
-- 用户丢失配置
-- 需要重新配置
-- 信任度下降
-
-**比喻**: "就像酒店打扫房间时，把你的行李扔了"
+重复不是一定要全部消灭；有些重复比错误抽象更安全。但 647 个重复块加上 19 模块 SCC，说明问题不只是“局部 copy-paste”，而是边界没有收住。核心模块互相知道太多，重复逻辑就会自然扩散。
 
 ---
-### 4.5 Before/After —— 如果重构会怎样？
-
-#### **Case 1: `prompt.ts` 拆分**
-
-**Before (现在)**:
-```
-session/prompt.ts (1,780 行)
-├── System prompt 组装 (300 行)
-├── Tool 定义构建 (400 行)
-├── 消息历史处理 (500 行)
-├── 结构化输出创建 (200 行)
-├── 双写迁移代码 (100 行)
-└── 其他 (601 行)
-```
-
-**After (重构后)**:
-```
-session/
-├── system-prompt.ts (300 行)
-├── tool-definition.ts (400 行)
-├── message-history.ts (500 行)
-├── structured-output.ts (200 行)
-└── prompt.ts (300 行) ← 只负责协调
-```
-
-**收益**:
-- 最大文件从 1,780 行降到 500 行（**3.6 倍**）
-- 每个文件可独立理解、测试、重构
-- 消除 63 个 import 的耦合
-
-#### **Case 2: `anthropic.ts` 类型化**
-
-**Before (现在)**:
-```typescript
-for (const m of inMsgs) {
-  if (!m || !(m as any).role) continue
-  if ((m as any).role === "user") {
-    const partsIn = Array.isArray((m as any).content) ? (m as any).content : []
-    // ... 每一行都有 (x as any)
-  }
-}
-```
-
-**After (重构后)**:
-```typescript
-interface Message {
-  role: "user" | "assistant" | "system"
-  content: string | ContentPart[]
-}
-
-interface ContentPart {
-  type: "text" | "image" | "tool_use" | "tool_result"
-  text?: string
-  source?: ImageSource
-  tool_use_id?: string
-  input?: Record<string, unknown>
-}
-
-for (const m of inMsgs) {
-  if (!m || !m.role) continue
-  if (m.role === "user") {
-    const partsIn = Array.isArray(m.content) ? m.content : []
-    // ... 类型安全，无 any
-  }
-}
-```
-
-**收益**:
-- 消除 117 处 `any`
-- 编译器可捕获类型错误
-- IDE 支持恢复（自动补全、跳转定义）
-
-#### **Case 3: v1/v2 双写移除**
-
-**Before (现在)**:
-```typescript
-// processor.ts (13 处)
-// TODO(v2): Temporary dual-write while migrating session messages to v2 events.
-if (Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM) {
-  yield* sync.run(SessionEvent.Reasoning.Started.Sync, { ... })
-}
-// ... 然后是 v1 写入路径
-
-// prompt.ts (2 处)
-// TODO(v2): Temporary dual-write while migrating session messages to v2 events.
-if (Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM) {
-  yield* sync.run(SessionEvent.Message.Created.Sync, { ... })
-}
-// ... 然后是 v1 写入路径
-
-// compaction.ts (2 处)
-if (Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM) {
-  yield* sync.run(SessionEvent.Compaction.Started.Sync, { ... })
-}
-// ... 然后是 v1 写入路径
-```
-
-**After (重构后)**:
-```typescript
-// processor.ts (0 处)
-yield* sync.run(SessionEvent.Reasoning.Started.Sync, { ... })
 
-// prompt.ts (0 处)
-yield* sync.run(SessionEvent.Message.Created.Sync, { ... })
+## 3. 架构屎山在哪里
 
-// compaction.ts (0 处)
-yield* sync.run(SessionEvent.Compaction.Started.Sync, { ... })
-```
+### 3.1 Provider 架构：外部复杂度被内部化
 
-**收益**:
-- 消除 16 处"临时"标记
-- 消除 23 处 flag 引用
-- 消除 v1 路径代码
-- 每个 bug fix 只需改一个地方
+多 provider 支持本来就难：不同 API 对 message、tool call、reasoning、schema、caching 的要求都不一样。OpenCode 的问题不是支持 provider 多，而是 provider 差异被塞进少数几个巨大文件中：
 
-#### **Case 4: 循环依赖拆分**
+- `provider/provider.ts` 管 provider registry、SDK 加载、custom provider 逻辑和 model lookup。
+- `provider/transform.ts` 管 message normalization、prompt caching、provider options、reasoning variants、schema patch。
+- console zen provider 另有 `anthropic.ts` / `openai.ts` 等高 `any` 密度适配器。
 
-**Before (现在)**:
-```
-config/config → lsp/lsp → project/instance-context → project/project → session/session.sql → session/message-v2 → lsp/lsp
-```
+这是一种典型屎山形态：外部世界很脏，内部边界也跟着脏。正确方向不是假装 provider 差异不存在，而是把差异封装在明确的 provider adapter contract 里，让核心路径只处理已经归一化的数据。
 
-**After (重构后)**:
-```
-config/config → lsp/lsp (通过接口)
-project/instance-context → project/project (通过接口)
-session/session.sql → session/message-v2 (通过接口)
-```
+### 3.2 Effect-TS：风险在深度绑定和 beta，不是“用了 Effect 就错”
 
-**收益**:
-- 消除 20 模块循环依赖
-- 每个模块可独立理解、测试、替换
-- 消除 `app-runtime.ts` 的 59 个 import
+需要收敛旧叙事：不能把“Effect 本身”当成原罪。仓库确实大量使用 Effect，也确实有成熟的 Layer/Service/Runtime 模式；这不是自动错误。
 
-### 重构 ROI 分析
+真正的问题是：
 
-| 重构项 | 投入时间 | 收益 | ROI |
-|--------|----------|------|-----|
-| 拆分 `prompt.ts` | 40 小时 | 最大文件从 1,780 行降到 500 行 | **52x** |
-| 类型化 `anthropic.ts` | 20 小时 | 消除 117 处 `any` | **5.8x** |
-| 移除 v1/v2 双写 | 16 小时 | 消除 16 处"临时"标记 | **93x** |
-| 拆分循环依赖 | 80 小时 | 消除 20 模块循环依赖 | **25x** |
-| **总计** | **156 小时** | **债务评分从 92.4 降到 47.4** | **59x** |
+| 指标 | 数值 |
+|---|---:|
+| Effect.gen / yield* files | 188 |
+| Effect import files | 271 |
+| 关键 Effect 依赖 | 4.0.0-beta.66 系列 |
 
-**结论**: 156 小时的重构投入，可以带来 **9,180 小时**的开发者时间节省（按 3 年计算）
+当一个核心项目在 271 个文件中绑定 Effect，同时关键依赖仍处于 beta 系列，升级、调试和新人理解成本都会被放大。`bridge.ts` 这类 Effect Runtime 与 Node async context 的互操作层可能是必要的；但必要不代表便宜。
 
----
-```
+所以批评应当精确：**风险不是“Effect 是错的”，而是“深度绑定到 beta Effect，并把核心业务编排写成超大 Effect 链路”**。
 
-**问题**: config 和 lsp 是核心基础设施层，本应被 session 和 project 依赖。但它们反向依赖了 session 和 project。
+### 3.3 Session v1/v2：迁移没有形成干净切口
 
-**影响**: 20 个模块形成循环依赖，无法独立理解、测试或替换。
+v1 session files 23 个，v2 session files 1 个。这个比例本身就说明 v2 仍然像附着在旧系统旁边的并行路径，而不是完成切换后的新主干。
 
-**比喻**: "就像一个人想抓住自己的头发把自己提起来"
+16 处 dual-write 标记把迁移债务暴露在 runtime 分支中。只要 `experimentalEventSystem` 还需要在核心 session path 中被反复判断，系统就不是“已经迁移”，而是“迁移状态被摊在业务逻辑里”。
 
-#### **反模式 4: "The Any-driven Development"（Any 驱动开发）**
+### 3.4 Deprecated 和无测试包是长期尾巴
 
-**代表文件**: `openai.ts`（每 6 行一次 `as any`）
+自动化指标：
 
-```typescript
-const toImg = (p: any) => {
-  if (!p || typeof p !== "object") return undefined
-  if ((p as any).type === "image_url" && (p as any).image_url)
-    return { type: "image_url", image_url: (p as any).image_url }
-  // ... 参数已经是 any 了，还写 (p as any)
-}
-```
+| 指标 | 数值 |
+|---|---:|
+| `@deprecated` markers | 20 |
+| packages without tests | 5 |
+| no-test packages | `function`, `plugin`, `script`, `slack`, `web` |
 
-**数据**: 754 处 `any`（493 处在源码）
-
-**影响**:
-- 编译器形同虚设（类型错误只在运行时暴露）
-- 重构恐惧（改一个类型可能影响 754 个地方）
-- IDE 支持瘫痪（自动补全、跳转定义都失效）
-
-**比喻**: "TypeScript 的本意是类型安全，OpenCode 的解法是 `as any`"
-
-#### **反模式 5: "The TODO-driven Architecture"（TODO 驱动架构）**
-
-**代表**: 16 处 `TODO(v2)` 标记，从 2024 年到现在
-
-```typescript
-// TODO(v2): Temporary dual-write while migrating session messages to v2 events.
-```
-
-**数据**:
-- 16 处"临时"TODO(v2) 标记
-- 最早的一批是 2025 年加的——**超过 1 年了**
-- 至今未删除
-
-**影响**: "临时"代码变成了永久债务，"TODO"变成了"TO NEVER DO"。
-
-**比喻**: "就像'等我有钱了就...'，但永远没钱"
-
-### 4.2 Effect-TS 的"过度使用"案例
-
-#### **案例 1: `prompt.ts` 的 1,536 行 `Effect.gen` 函数**
-
-```typescript
-export const SessionRun = Effect.gen(function* (_) {
-  // ... 1,536 行代码
-  // 包括：system prompt 组装、tool 定义构建、消息历史处理、结构化输出创建、双写迁移代码
-})
-```
-
-**问题**: 一个 `Effect.gen` 函数跨越 1,536 行，这不是"函数式编程"，这是"函数式灾难"。
-
-**对比**: 一个好的 `Effect.gen` 函数应该在 50-100 行以内，每个 `yield*` 调用一个独立的 service。
-
-#### **案例 2: 66 个 Service + 66 个 Layer + 58 个 defaultLayer**
-
-```typescript
-// app-runtime.ts
-Layer.merge(SessionRun.defaultLayer)
-  .pipe(Layer.provide(SessionStatus.defaultLayer))
-  .pipe(Layer.provide(SessionCompaction.defaultLayer))
-  // ... 16 more layers
-```
-
-**问题**: `app-runtime.ts` 有 59 个 import，手动连接 66 个 Service。
-
-**影响**: 添加一个新 service，就要修改 `app-runtime.ts`。这是一个隐式的变更瓶颈。
-
-**对比**: 好的 Effect 项目用自动发现机制（如基于目录约定），而不是手动组装。
-
-#### **案例 3: 一个简单的配置读取为什么要用 Effect？**
-
-```typescript
-// 假设的代码（简化）
-export const ConfigLive = Layer.effect(
-  Config,
-  Effect.gen(function* (_) {
-    const file = yield* _.promise(Bun.file("opencode.json").json())
-    return { ...file }
-  })
-)
-```
-
-**问题**: 读一个 JSON 文件，为什么要用 Effect？直接 `JSON.parse` 不行吗？
-
-**影响**: 简单的事情搞复杂了，新人学习成本高，调试困难。
-
-**比喻**: "用大炮打蚊子，蚊子死了，但墙也塌了"
-
-### 4.3 测试质量分析
-
-#### **案例 1: `transform.test.ts`（3,812 行，111 次 `any`）**
-
-```typescript
-// 测试在复制逻辑而非验证逻辑
-it("should normalize messages", () => {
-  const input = [{ role: "user", content: [{ type: "text", text: "hello" }] }]
-  const expected = [{ role: "user", content: [{ type: "text", text: "hello" }] }]
-  expect(normalizeMessages(input)).toEqual(expected)
-})
-```
-
-**问题**: 
-- 测试文件比源文件还长（3,812 行 vs 1,384 行）
-- 测试在复制逻辑，而非验证逻辑
-- 111 次 `any` 使用，测试本身也类型不安全
-
-**影响**: 测试没有发现 bug，反而在维护另一份逻辑。
-
-#### **案例 2: 99.6% 通过率的"虚假繁荣"**
-
-**数据**: 2,923 个测试，11 个失败，99.6% 通过率
-
-**失败的测试**:
-- **opencode 8 个失败**:
-  - 5 个 skill discovery：`.claude/skills/` 和 `.agents/skills/` 目录扫描返回 0 结果（期望 1-2）。**疑似回归**——发现代码变更后测试未同步。
-  - 1 个 HTTP workspace proxy：超时测试，预期返回 500 但收到其他状态码。
-  - 2 个 provider HttpApi OAuth 测试。
-
-- **llm 3 个失败**:
-  - 全部因缺少 `OPENAI_API_KEY` 环境变量导致 auth schema 校验失败。**非回归**——测试基础设施问题，需要 mock auth 层。
-
-**比喻**: "99.6% 通过率看起来很好，但那 0.4% 是核心功能"
-
-#### **案例 3: 脆弱测试（5 个，>10 次 `any`）**
-
-| 文件 | any 次数 | 问题 |
-|------|---------|------|
-| `test/provider/transform.test.ts` | 111 | 测试在复制逻辑 |
-| `test/acp/event-subscription.test.ts` | 35 | 测试类型不安全 |
-| `test/util/effect-zod.test.ts` | 28 | 测试类型不安全 |
-| `test/mcp/lifecycle.test.ts` | 12 | 测试类型不安全 |
-| `test/lsp/client.test.ts` | 12 | 测试类型不安全 |
-
-**影响**: 测试本身也是 `any` 驱动的，无法保证类型安全。
-
-### 4.4 依赖地狱
-
-#### **19 个 v0.x 不稳定依赖**
-
-| 依赖 | 版本 | 风险 |
-|------|------|------|
-| `bun-pty` | 0.4.8 | 核心 PTY 功能，API 随时可能变 |
-| `@agentclientprotocol/sdk` | 0.21.0 | ACP 协议 SDK |
-| `partial-json` | 0.1.7 | 流式 JSON 解析 |
-| `@solidjs/router` | 0.15.4 | UI 路由，SolidJS 生态主力包 |
-| `web-tree-sitter` | 0.25.10 | 代码解析 |
-
-**影响**: 上游 API 变更会直接影响核心功能。
-
-#### **4 个补丁包**
-
-- `solid-js@1.9.10`
-- `photon-node@0.3.4`
-- `standard-openapi@0.2.9`
-- `@npmcli/agent@4.0.0`
-
-**影响**: 上游有未解决的阻塞 bug，需要自己打补丁。
-
-#### **版本冲突（4 个）**
-
-- `@shikijs/transformers`（3.9.2 vs 3.20.0）
-- `minimatch`（10.0.3 vs 10.2.5）
-- `aws4fetch`（pinned vs ranged）
-- `@solid-primitives/resize-observer`（2.1.3 vs 2.1.5）
----
-### 4.7 依赖地狱可视化
-
-```mermaid
-graph TD
-  subgraph "v0.x 不稳定依赖 (19 个)"
-    A[bun-pty@0.4.8] --> B[PTY 核心]
-    C[@agentclientprotocol/sdk@0.21.0] --> D[ACP 协议]
-    E[partial-json@0.1.7] --> F[流式 JSON]
-    G[@solidjs/router@0.15.4] --> H[UI 路由]
-    I[web-tree-sitter@0.25.10] --> J[代码解析]
-  end
-  
-  subgraph "补丁包 (4 个)"
-    K[solid-js@1.9.10] --> L[UI 框架]
-    M[photon-node@0.3.4] --> N[图像处理]
-    O[standard-openapi@0.2.9] --> P[OpenAPI]
-    Q[@npmcli/agent@4.0.0] --> R[npm 代理]
-  end
-  
-  subgraph "版本冲突 (4 个)"
-    S[@shikijs/transformers] --> T[3.9.2 vs 3.20.0]
-    U[minimatch] --> V[10.0.3 vs 10.2.5]
-    W[aws4fetch] --> X[pinned vs ranged]
-    Y[@solid-primitives/resize-observer] --> Z[2.1.3 vs 2.1.5]
-  end
-  
-  style A fill:#ff6b6b
-  style C fill:#ff6b6b
-  style E fill:#ff6b6b
-  style G fill:#ff6b6b
-  style I fill:#ff6b6b
-  style K fill:#ffa500
-  style M fill:#ffa500
-  style O fill:#ffa500
-  style Q fill:#ffa500
-  style S fill:#ffff00
-  style U fill:#ffff00
-  style W fill:#ffff00
-  style Y fill:#ffff00
-```
-
-**解读**:
-- **红色**: v0.x 不稳定依赖，API 随时可能变
-- **橙色**: 补丁包，上游有阻塞性 bug
-- **黄色**: 版本冲突，范围版本声明不一致
-
-**影响**:
-- 上游 API 变更会直接影响核心功能
-- 需要自己打补丁
-- 版本冲突会导致不可预测的行为
-
-**比喻**: "就像建在流沙上的房子，随时可能塌"
-
-### 4.8 测试质量可视化
-
-```mermaid
-pie title 测试质量分布
-  "通过 (2,912)" : 2912
-  "失败 (11)" : 11
-  "跳过 (48)" : 48
-```
-
-**解读**:
-- **99.6% 通过率** 看起来很好
-- 但 **11 个失败** 的测试是核心功能
-- **48 个跳过** 的测试可能是技术债
-
-**失败的测试**:
-- **opencode 8 个失败**:
-  - 5 个 skill discovery（疑似回归）
-  - 1 个 HTTP workspace proxy（超时）
-  - 2 个 provider HttpApi OAuth
-
-- **llm 3 个失败**:
-  - 全部因缺少 `OPENAI_API_KEY` 环境变量
-
-**比喻**: "99.6% 通过率看起来很好，但那 0.4% 是核心功能"
-
-### 4.9 代码重复可视化
-
-```mermaid
-sankey-beta
-  "acp/agent.ts", "重复块", 155
-  "provider/transform.ts", "重复块", 84
-  "lsp/server.ts", "重复块", 78
-  "其他文件", "重复块", 330
-  "重复块", "跨文件重复", 139
-  "重复块", "文件内重复", 508
-```
-
-**解读**:
-- **647 个重复块**，1,418 个实例
-- **139 个跨文件重复**（相同的 8 行代码出现在不同文件中）
-- **508 个文件内重复**（相同的 8 行代码出现在同一文件中）
-
-**最严重的文件**:
-- `acp/agent.ts`: 155 个重复块
-- `provider/transform.ts`: 84 个重复块
-- `lsp/server.ts`: 78 个重复块
-
-**影响**:
-- 修改一个地方，要同步修改 3 个地方
-- 容易遗漏，导致不一致
-- 代码膨胀，维护成本高
-
-**比喻**: "就像复印机坏了，每张纸都印了 3 遍"
+Deprecated API 并不一定危险；保留兼容层有时是正确选择。但当 deprecated markers、dual-write、v0 依赖和大文件同时存在时，它们共同指向同一个问题：旧路径下不去，新路径收不拢。
 
 ---
 
-## 第五层：The Contrast —— 不只是批评，要让读者知道"好的应该长什么样"
+## 4. 社区与 Git 历史信号
 
-### 5.1 对比表格
+### 4.1 真实 issue 指向可靠性和迁移问题
 
-| 维度 | OpenCode | 行业最佳实践 | 差距 |
-|------|----------|-------------|------|
-| 最大文件行数 | 1,780 | < 500 | **3.6x** |
-| `any` 使用密度 | 3.1/文件 (console) | < 0.1/文件 | **31x** |
-| 循环依赖 | 20 模块 SCC | 0 | **∞** |
-| 测试/源码比 | 0.33 | > 1.0 | **3x** |
-| 双写标记 | 16 处 TODO(v2) | 0 | **∞** |
-| v0.x 依赖 | 19 | < 3 | **6x** |
-| 补丁包 | 4 | 0 | **∞** |
+报告引用的 issue 集中在几类问题：
 
-### 5.2 替代方案
+| 类别 | 代表 issue | 信号 |
+|---|---|---|
+| 长会话崩溃 / OOM | #22883 | 长 session 下内存风险 |
+| WSL2 crash | #28830 | runtime/listener 路径可靠性问题 |
+| AbortError sidecar crash | #26667 | streaming interruption 没有在边界被稳妥吸收 |
+| Edit tool Python indentation corruption | #25953 | 工具成功返回但文件内容错误，属于高严重度数据损坏信号 |
+| 并发 plugin config 删除 | #16450 | 并发安装/配置路径有数据丢失风险 |
+| skill discovery symlink | #27027 / #27638 | 文件系统遍历策略在慢盘/循环链接下失控 |
+| V2 prompt controls regression | #28686 / #29051 | v2 UI 迁移缺功能 |
+| config modularization requests | #19353 / #9062 / #28600 | 配置复杂度外溢到用户 |
 
-#### **方案 1: Cursor/Windsurf/Cline**
+这些 issue 不证明“每个用户都受影响”，但足以证明核心功能路径存在真实痛点：崩溃、性能、数据损坏、配置复杂、v2 回归。
 
-**优势**:
-- 架构简洁（通常 < 50K 行代码）
-- 无循环依赖
-- 类型安全（很少用 `any`）
-- 测试覆盖好（测试/源码比 > 1.0）
+### 4.2 Issue 堆积：不是随机 bug，是几个热点一直外溢
 
-**劣势**:
-- 功能可能不如 OpenCode 强大
-- 可能不开源
+GitHub open issue 搜索显示，问题并不是平均撒在整个仓库里，而是反复堆在少数核心热点上。本次查询每类最多取前 20 条结果；命中 20 条表示该类至少有 20 条当前 open issue 可作为样本。
 
-#### **方案 2: 自建 Agent**
+| 热点 | 当前 open issue 证据 | 暴露的结构问题 |
+|---|---|---|
+| crash / OOM / WSL2 / sidecar | 查询前 20 条包括 #26667、#22883、#28830、#26669、#29682、#28984、#29177、#23698 | session、desktop renderer、sidecar、runtime listener 和内存生命周期边界没有被压成稳定层 |
+| skill discovery / symlink | 查询前 20 条包括 #27638、#27027、#29437、#18848、#16188、#25686、#26478 | 文件系统遍历、symlink 策略、REST/TUI skill 可见性没有统一语义 |
+| v2 / prompt / reasoning | 查询前 20 条包括 #29051、#28686、#29595、#29184、#28769、#28716、#28623、#19081 | v2 UI、reasoning metadata、prompt replay、provider thinking 模板仍在同一迁移泥潭里 |
+| config / state / paths | 查询前 20 条包括 #9062、#28600、#26051、#10133、#20940、#28733、#28966、#27786 | 配置加载、优先级、路径解析、持久状态位置对用户和插件都不稳定 |
+| edit / corruption / data loss | 查询前 20 条包括 #25953、#29573、#14970、#24959、#24742、#14612、#17949 | “工具调用成功”和“磁盘结果正确”之间缺少强校验；文件编辑 fallback 太容易把局部失败放大成数据损坏 |
 
-**最少需要多少代码？**
+这就是 bug 修不干净的工程含义：不是没人提交 patch，而是修复点散落在上帝文件、dual-write 分支、provider transform、runtime 文件系统边界和桌面 sidecar 之间。每个 issue 看起来都能局部修，修完却没有把热点收敛成更小、更硬的边界，于是同类问题继续以新标题出现。
 
-一个基本的 AI coding agent 需要：
-- LLM 调用层: ~1,000 行
-- Tool 注册层: ~500 行
-- 会话管理层: ~1,000 行
-- UI 层: ~2,000 行
+### 4.3 长期开着的老问题说明 backlog 不是短期尖峰
 
-**总计**: ~5,000 行
+这些 open issue 里还有一批创建于 2026 年 1–3 月、到 5 月底仍未关闭的老问题：
 
-**对比 OpenCode**: 186,000 行（**37 倍**）
+| Issue | 创建时间 | 主题 |
+|---|---|---|
+| #9062 | 2026-01-17 | `config.d/` modular configuration |
+| #10133 | 2026-01-23 | unified configuration structure |
+| #10986 | 2026-01-28 | standard skills location `.agents/skills/` |
+| #11145 | 2026-01-29 | WSL2 TUI freeze |
+| #14612 | 2026-02-21 | edit tool indentation corruption not shown in diff |
+| #14970 | 2026-02-24 | SQLite database corruption on concurrent NFS sessions |
+| #16188 | 2026-03-05 | startup hang/high CPU with skill symlink cycle |
+| #17949 | 2026-03-17 | destructive file deletion guardrails |
+| #18132 | 2026-03-18 | WSL2 TUI freeze / SIGILL |
+| #18432 | 2026-03-20 | Windows directory corruption / junction loops |
+| #18848 | 2026-03-23 | project-level skills not discovered through symlink |
+| #19081 | 2026-03-25 | reasoning content stripped on replay |
 
-**问题**: OpenCode 多出来的 181,000 行在干什么？答案：处理 v1/v2 双写、循环依赖、`any` 类型、巨型文件、Effect 过度使用。
+这些不是“昨天刚报、还没来得及处理”的噪声。配置、skills、WSL2、edit/data corruption、session replay 这些主题跨月存在，和代码里的 dual-write、provider transform、filesystem traversal、config path 边界互相印证：屎山的核心特征不是 bug 多，而是同类 bug 会换个入口继续回来。
 
-#### **方案 3: Claude Code/Codex CLI**
+### 4.4 Git 历史暴露维护摩擦
 
-**优势**:
-- 官方支持，质量有保证
-- 架构简洁（通常 < 30K 行代码）
-- 类型安全
-- 测试完善
+`transform.ts` 的注释来自 commit `6409aceb1`（PR #25934: `fix: sanitize surrogates`）。这条证据成立，但不应被重复使用成整份报告的唯一支柱。
 
-**劣势**:
-- 可能不如 OpenCode 灵活
-- 可能不开源
+更值得关注的是同一类维护信号：
 
-### 5.3 一个思想实验
+- 同一功能出现 revert / reapply 循环。
+- 存在 `wip` / `sync` / `events` / `cleanup` 等信息量低的 commit message。
+- provider transform 和 session migration 这类核心路径依然有显性 TODO。
 
-**问题**: "如果一个新开发者加入团队，要多久才能安全地修改 `prompt.ts`？"
+这些信号不能单独判死刑，但和代码结构指标叠加后，说明维护者已经在复杂度里反复付成本。
 
-**答案**: "永远不会安全"
+### 4.5 仓库身份叙事收敛
 
-**原因**:
-1. 需要读完 1,780 行才能理解它干了什么
-2. 需要理解 63 个依赖
-3. 需要理解 1,536 行的 `Effect.gen` 函数
-4. 需要理解 v1/v2 双写逻辑
-5. 需要理解循环依赖关系
-6. 需要跑 3,812 行的测试文件
-7. 需要祈祷没有遗漏
-
-**比喻**: "就像修改一个已经运行了 10 年的 COBOL 系统，没有人知道它为什么这样写，但所有人都知道它不能改"
----
-## 5.4 决策框架 —— 如何选择替代方案？
-
-### 场景 1: 你是个人开发者
-
-**需求**: 快速、简单、可靠的 AI coding 工具
-
-**推荐**: **Cursor** 或 **Windsurf**
-
-**理由**:
-- 开箱即用，无需配置
-- 架构简洁，学习成本低
-- 类型安全，重构有信心
-- 测试完善，升级无忧
-
-**成本**: $20/月（Cursor Pro）
-
-### 场景 2: 你是小团队（5-10 人）
-
-**需求**: 可定制、可扩展、可维护的 AI coding 工具
-
-**推荐**: **Claude Code** 或 **Codex CLI**
-
-**理由**:
-- 官方支持，质量有保证
-- 架构简洁，团队上手快
-- 类型安全，协作顺畅
-- 测试完善，迭代有信心
-
-**成本**: $100/月（Claude Pro）
-
-### 场景 3: 你是大团队（50+ 人）
-
-**需求**: 完全可控、可定制、可集成的 AI coding 工具
-
-**推荐**: **自建 Agent**
-
-**理由**:
-- 完全可控，满足特定需求
-- 可集成现有工具链
-- 可定制 UI/UX
-- 可控制数据安全
-
-**成本**: $50,000/年（2 个全职开发者）
-
-**对比 OpenCode**: 如果选择 OpenCode，每年要多花 **$83,000** 的开发者时间（见 §1.5 拥有成本分析）
-
-### 场景 4: 你是 OpenCode 现有用户
-
-**需求**: 继续使用 OpenCode，但希望改善体验
-
-**推荐**: **推动 OpenCode 团队偿还技术债务**
-
-**具体行动**:
-1. 在 GitHub Issues 中报告技术债务问题
-2. 提交 PR 修复 `any` 类型（从 console zen provider 开始）
-3. 提交 PR 拆分巨型文件（从 `prompt.ts` 开始）
-4. 提交 PR 完成 v2 迁移（删除 16 处"临时"标记）
-
-**成本**: 0（开源项目，贡献者免费）
-
-**风险**: 如果 OpenCode 团队不偿还技术债务，项目会继续恶化
-
-### 决策矩阵
-
-| 场景 | 推荐方案 | 成本 | 风险 | 收益 |
-|------|----------|------|------|------|
-| 个人开发者 | Cursor/Windsurf | $20/月 | 低 | 快速、简单、可靠 |
-| 小团队 | Claude Code/Codex CLI | $100/月 | 低 | 可定制、可扩展、可维护 |
-| 大团队 | 自建 Agent | $50,000/年 | 中 | 完全可控、可定制、可集成 |
-| OpenCode 用户 | 推动偿还技术债务 | 0 | 高 | 继续使用，但需等待改善 |
-
-### 最终建议
-
-**如果你是新用户**: 不要选择 OpenCode。选择 Cursor、Windsurf、Claude Code 或 Codex CLI。
-
-**如果你是现有用户**: 推动 OpenCode 团队偿还技术债务，但同时准备好备选方案。
-
-**如果你是 OpenCode 团队**: 立即偿还技术债务，否则项目会在 1 年内失去所有用户。
+`anomalyco/opencode` 是当前公开仓库，GitHub 显示不是派生仓库；`sst/opencode` 相关访问会指向当前仓库身份。报告不再使用“某方接手派生仓库”这一叙事。这里的批评对象就是当前 OpenCode 代码库本身。
 
 ---
 
-## 第六层：The Verdict —— 一句话总结，让读者记住
+## 5. 测试：不是没有，而是没兜住关键回归
 
-### 6.1 数据总结
+旧叙事里把测试资产一笔抹黑的说法不准确，应该删掉。OpenCode 有相当规模的测试资产：
 
-**92.4 分意味着什么？**
+| 指标 | 数值 |
+|---|---:|
+| Test files | 408 |
+| Test lines | 107,212 |
+| Test/source ratio | 0.35 |
+| Total tests | 2,923 |
+| Passing rate | 99.6% |
+| Failed tests | 11 |
+| Skipped tests | 48 |
 
-- 比一个刚毕业的大学生写的第一个项目还糟糕
-- 比一个 10 年历史的遗留系统还复杂
-- 比一个"快速迭代"的创业公司代码还混乱
+测试不是没有。问题是：**有测试，仍然有关键路径失败和回归**。
 
-### 6.2 历史原因
+`autoresearch-report.txt` 记录的失败分布：
 
-**为什么变成这样？**
+| 包 | 测试数 | 失败 | 说明 |
+|---|---:|---:|---|
+| opencode | 2,621 | 8 | 5 个 skill discovery、1 个 HTTP workspace proxy、2 个 provider HttpApi OAuth |
+| llm | 217 | 3 | OpenAI route 缺 `OPENAI_API_KEY`，更像环境/auth schema 问题 |
+| core | 85 | 0 | 通过 |
 
-1. **快速迭代**: 想做"最强大的 AI coding tool"，结果做成了"最难维护的代码库"
-2. **技术选型失误**: Effect-TS 是个好框架，但用在了错误的地方
-3. **缺乏重构时间**: 功能优先，技术债务后付——但永远没时间付
-4. **缺乏代码审查**: 16 处"临时"标记存在了 1 年，没人发现
+最危险的是 5 个 skill discovery 失败：`all()` 返回 0，期望 1-2。结合 symlink/slow filesystem/circular link 的 issue，这不是“测试小毛刺”，而是用户能直接感知的启动和发现路径风险。
 
-### 6.3 核心矛盾
+正确批评不是“OpenCode 没测试”，而是：
 
-**OpenCode 的核心矛盾**:
+1. 测试资产不少，但测试/source 比仍只有 0.35。
+2. 关键路径仍有失败测试。
+3. 48 个 skip 是潜在技术债。
+4. 测试没有阻止 v2 UI、skill discovery、edit corruption 等用户可见回归进入主线。
 
-- **目标**: 做"最强大的 AI coding tool"
-- **现实**: 做成了"最难维护的代码库"
-- **证据**: 92.4/100 债务评分，18 个巨型文件，754 处 `any`，20 模块循环依赖
-
-### 6.4 最后一击
-
-**引用 `transform.ts` 的注释**:
-
-```typescript
-// TODO: fix this stupid inefficient dogshit function
-```
-
-**开发者自己都知道。**
-
----
-## 附录 D: What Went Wrong —— 时间线
-
-### 2024 Q3: 项目启动
-
-- 选择 Effect-TS 作为核心框架
-- 选择 Bun 作为运行时
-- 选择 SolidJS 作为 UI 框架
-- **问题**: 技术选型过于激进，3 个核心依赖都是 v0.x
-
-### 2024 Q4: 快速迭代期
-
-- 大量功能快速上线
-- 测试覆盖不足（测试/源码比 < 0.5）
-- 代码审查不严格
-- **问题**: "先上线再说"的文化
-
-### 2025 Q1: v2 迁移开始
-
-- 开始 session v1 → v2 迁移
-- 添加 `Flag.OPENCODE_EXPERIMENTAL_EVENT_SYSTEM`
-- 添加 16 处 `TODO(v2)` 标记
-- **问题**: "临时"标记变成永久债务
-
-### 2025 Q2: 技术债务积累
-
-- 巨型文件出现（prompt.ts 超过 2000 行）
-- `any` 类型泛滥（754 处）
-- 循环依赖形成（20 模块 SCC）
-- **问题**: 没有时间重构
-
-### 2025 Q3: 社区反馈开始
-
-- 第一批崩溃报告（OOM Kill）
-- 第一批性能投诉（"terribly slow"）
-- 第一批数据丢失报告（Python indentation）
-- **问题**: 用户开始考虑离开
-
-### 2025 Q4: 补丁时代
-
-- 开始打补丁（solid-js, photon-node, standard-openapi, npmcli/agent）
-- 依赖冲突出现（4 个版本冲突）
-- **问题**: 上游有阻塞性 bug
-
-### 2026 Q1: 危机加深
-
-- 更多崩溃报告（20 个 open issues）
-- 更多性能投诉（11 个 open issues）
-- V2 过渡期回归（6 个 open issues）
-- **问题**: 用户流失风险
-
-### 2026 Q2: 现在
-
-- 债务评分: 92.4/100
-- 18 个巨型文件
-- 754 处 `any`
-- 20 模块循环依赖
-- 100+ open issues
-- **问题**: 项目处于"技术债务危机"
-
-### 关键转折点
-
-**2025 Q1**: 如果当时完成了 v2 迁移，删除了 16 处"临时"标记，债务评分会降低 15 分
-
-**2025 Q2**: 如果当时重构了巨型文件，债务评分会降低 15 分
-
-**2025 Q3**: 如果当时修复了 `any` 类型，债务评分会降低 15 分
-
-**现在**: 三个"如果"叠加，债务评分应该是 92.4 - 45 = **47.4**（健康水平）
-
-**结论**: OpenCode 的技术债务不是"不可避免的"，而是"可以预防的"。每个关键转折点都有机会阻止债务积累，但都没有抓住。
----
-## 附录 E: Lessons Learned —— 给其他项目的教训
-
-### 教训 1: "临时"代码永远不会临时
-
-**OpenCode 的案例**: 16 处 `TODO(v2)` 标记存在了超过 1 年
-
-**教训**: 如果你写了"临时"代码，要么在 2 周内删除它，要么接受它会变成永久债务
-
-**建议**: 
-- 设置 TODO 过期时间（2 周）
-- 用 CI 检查 TODO 年龄
-- 用 `@deprecated` 而不是 `TODO`
-
-### 教训 2: `any` 类型是技术债务的温床
-
-**OpenCode 的案例**: 754 处 `any`，其中 493 处在源码
-
-**教训**: 每个 `any` 都是一个潜在的运行时错误，每个 `as any` 都是对编译器的不信任
-
-**建议**:
-- 用 `unknown` 而不是 `any`
-- 用 Zod schema 验证外部数据
-- 用 `@typescript-eslint/no-explicit-any` 规则
-
-### 教训 3: 巨型文件是维护噩梦
-
-**OpenCode 的案例**: 18 个文件超过 1000 行，最大的 1,780 行
-
-**教训**: 文件越大，越难理解、测试、重构
-
-**建议**:
-- 设置文件行数上限（500 行）
-- 用 ESLint 规则检查文件大小
-- 定期重构巨型文件
-
-### 教训 4: 循环依赖是架构级问题
-
-**OpenCode 的案例**: 20 个模块形成循环依赖
-
-**教训**: 循环依赖导致模块无法独立理解、测试、替换
-
-**建议**:
-- 用依赖倒置原则
-- 用接口层解耦模块
-- 用工具检查循环依赖（如 `madge`）
-
-### 教训 5: 测试覆盖不足会导致回归
-
-**OpenCode 的案例**: 测试/源码比 0.33，5 个 skill discovery 测试挂了
-
-**教训**: 测试覆盖不足，bug 会反复出现
-
-**建议**:
-- 设置测试覆盖率下限（80%）
-### C. 优先级建议
-**P0 — 立即行动**:
-1. 完成 v2 session 迁移（移除 16 处"临时"标记）
-**P1 — 短期（1-2 sprint）**:
-2. Console zen 提供者层类型化（消除 273 处 `any`）
-3. 清理废弃 Plugin TUI API（移除 10+ 个废弃方法）
-**P2 — 中期**:
-4. 修复 11 个失败的测试
-5. 拆分 `prompt.ts`（1,780 行 → 4-5 个 service）
-6. 拆分 `provider.ts`（1,882 行 → 3 个文件）
-**P3 — 持续改善**:
-7. 深嵌套重构（3,693 行 >4 级缩进）
-8. 循环依赖拆分（20 模块 SCC）
-9. 非空断言替换（173 个 `!`）
----
-### D. Quick Wins —— 低成本高收益的改进
-
-| 改进项 | 投入时间 | 收益 | ROI |
-|--------|----------|------|-----|
-| 修复 3 个 llm 测试（mock auth） | 4 小时 | 消除 3 个失败测试 | **高** |
-| 修复 5 个 skill discovery 测试 | 8 小时 | 消除 5 个失败测试 | **高** |
-| 为 anthropic.ts 定义 Zod schema | 16 小时 | 消除 117 处 `any` | **高** |
-| 为 openai.ts 定义 Zod schema | 16 小时 | 消除 125 处 `any` | **高** |
-| 删除 16 处 TODO(v2) 标记 | 8 小时 | 消除双写逻辑 | **高** |
-| 删除 10+ 个废弃 Plugin TUI API | 4 小时 | 减少维护负担 | **高** |
-| **总计** | **56 小时** | **消除 242 处 `any` + 8 个失败测试 + 15 处双写** | **极高** |
-
-**结论**: 56 小时的 Quick Wins，可以消除 **32% 的 `any`**、**73% 的失败测试**、**100% 的双写标记**
+这比“没有测试”更糟糕：团队已经投入了测试成本，但复杂度仍然从缝里漏出来。
 
 ---
 
-### E. Migration Path —— 从 92.4 到 47.4 的路线图
+## 6. 依赖与运行时风险
 
-**阶段 1: 稳定期（1-2 个月）**
-- 目标: 债务评分从 92.4 降到 80
-- 重点: 修复失败测试、消除双写标记、清理废弃 API
-- 投入: 80 小时
-- 收益: 消除 8 个失败测试、15 处双写标记、10+ 个废弃 API
+自动化指标：
 
-**阶段 2: 改善期（3-6 个月）**
-- 目标: 债务评分从 80 降到 60
-- 重点: 类型化 console zen provider、拆分巨型文件
-- 投入: 200 小时
-- 收益: 消除 273 处 `any`、拆分 5 个巨型文件
+| 指标 | 数值 |
+|---|---:|
+| Total unique deps | 219 |
+| v0.x unstable deps | 19 |
+| Ranged version deps | 22 |
+| Patched packages | 7 |
 
-**阶段 3: 重构期（6-12 个月）**
-- 目标: 债务评分从 60 降到 47.4
-- 重点: 循环依赖拆分、深嵌套重构、代码重复消除
-- 投入: 400 小时
-- 收益: 消除 20 模块循环依赖、3,693 行深嵌套、647 个重复块
+patched packages 包括：
 
-**总计**: 680 小时，债务评分从 92.4 降到 47.4（**降低 49%**）
+- `@ai-sdk/xai`
+- `@silvia-odwyer/photon-node`
+- `gcp-metadata`
+- `virtua`
+- `@npmcli/agent`
+- `@standard-community/standard-openapi`
+- `solid-js`
 
-**对比**: 如果不偿还技术债务，每年要多花 **$83,000** 的开发者时间（见 §1.5 拥有成本分析）
-
-**结论**: 680 小时的重构投入，可以带来 **$249,000** 的成本节省（按 3 年计算），**ROI 为 366x**
-
----
-**OpenCode 的案例**: "stupid inefficient dogshit" 注释存在了 21 天
-
-**教训**: 代码审查不严格，低质量代码会进入主分支
-
-**建议**:
-- 设置代码审查 checklist
-- 用自动化工具检查代码质量
-- 培养代码审查文化
-
-### 教训 8: 技术债务要定期偿还
-
-**OpenCode 的案例**: 三个"如果"叠加，债务评分应该是 47.4（健康水平）
-
-**教训**: 技术债务会利滚利，越早偿还越好
-
-**建议**:
-- 每个 sprint 留 20% 时间重构
-- 设置技术债务预算
-- 定期评估技术债务
-
----
-## 附录
-
-### A. 数据来源
-
-1. **自动化债务分析**: `autoresearch.sh`（454 行 harness，输出确定性、离线的债务报告）
-2. **GitHub Issues/PRs**: 100+ open issues，20+ PRs
-3. **Git 历史考古**: 13,428 commits，16 处 TODO(v2)，15 处 type suppressions
-4. **源码阅读**: 5 个"臭名昭著"的文件，300+ 次 `as any` 转换
-
-### B. 评分模型
-
-**复合债务评分 (0-100, 越高债务越重)**:
-
-| 维度 | 权重 | 得分 | 满分 | 关键数据 |
-|------|------|------|------|----------|
-| 巨型文件 (>1K LOC) | 15 | **15.0** | 15 | 18 个文件 (基线 10) |
-| Any 类型使用 | 15 | **15.0** | 15 | 754 处 (基线 500) |
-| v1/v2 双写迁移 | 15 | **15.0** | 15 | 16 处标记 (基线 10) |
-| TODO/FIXME/HACK | 10 | 7.2 | 10 | 16 个 (基线 25) |
-| 深层嵌套 | 10 | **10.0** | 10 | 3,314 行 (基线 3,000) |
-| 模块耦合 | 10 | 6.0 | 10 | 3 个高耦合文件 (基线 5) |
-| 已废弃 API | 10 | **10.0** | 10 | 20 个 (基线 15) |
-| 测试质量 | 10 | **10.0** | 10 | 5 脆弱+17 巨型 (基线 8) |
-| 无测试包 | 5 | **5.0** | 5 | 5 个 (基线 3) |
-| **总计** | **100** | **92.4** | **100** | |
-
-### C. 优先级建议
-
-**P0 — 立即行动**:
-1. 完成 v2 session 迁移（移除 16 处"临时"标记）
-
-**P1 — 短期（1-2 sprint）**:
-2. Console zen 提供者层类型化（消除 273 处 `any`）
-3. 清理废弃 Plugin TUI API（移除 10+ 个废弃方法）
-
-**P2 — 中期**:
-4. 修复 11 个失败的测试
-5. 拆分 `prompt.ts`（1,780 行 → 4-5 个 service）
-6. 拆分 `provider.ts`（1,882 行 → 3 个文件）
-
-**P3 — 持续改善**:
-7. 深嵌套重构（3,693 行 >4 级缩进）
-8. 循环依赖拆分（20 模块 SCC）
-9. 非空断言替换（173 个 `!`）
+补丁包不是一定错误；有时它是工程上唯一可行的修复方式。但 7 个补丁包 + 19 个 v0.x 依赖 + beta/RC 核心依赖组合在一起，意味着项目不仅要维护自己的屎山，还要维护一部分上游生态的不稳定性。
 
 ---
 
-## 最终效果
-**复合债务评分 (0-100, 越高债务越重)**:
-### F. Metric Verification —— 数据验证表
+## 7. 应该先拆哪里
 
-| 指标 | 报告中的值 | 最新运行值 | 状态 |
-|------|-----------|-----------|------|
-| 债务评分 | 92.4 | 92.4 | ✅ |
-| any 类型总数 | 754 | 754 | ✅ |
-| 源码 any | 493 | 493 | ✅ |
-| 测试 any | 261 | 261 | ✅ |
-| 巨型文件 (>1K) | 18 | 18 | ✅ |
-| v1/v2 双写标记 | 16 | 16 | ✅ |
-| 深层嵌套行数 | 3,314 | 3,314 | ✅ |
-| 循环依赖 SCC | 5 | 5 | ✅ |
-| 最大 SCC | 19 模块 | 19 | ✅ |
-| 非空断言 | 212 | 212 | ✅ |
-| 重复块 | 647 | 647 | ✅ |
-| 源文件数 | 1,154 | 1,154 | ✅ |
-| 测试文件数 | 408 | 408 | ✅ |
-| 源码行数 | 214,402 | 214,402 | ✅ |
+### P0：收掉 v1/v2 dual-write
 
-**结论**: 报告中的所有数据点都与最新运行结果一致。
+目标：让 session event 迁移有一个主路径，而不是在 `processor.ts` 和 `prompt.ts` 的分支里继续扩散。
+
+验收标准应当是：
+
+- 删除 16 处 `TODO(v2)` dual-write 标记。
+- `experimentalEventSystem` 不再是核心 session processor 的常规分支条件。
+- 相关 prompt、processor、compaction、TUI debug 路径有明确 owner 和测试覆盖。
+
+### P1：把 provider 差异压回 adapter 边界
+
+目标：减少 `provider/transform.ts` 和 console zen provider 的 `any` 扩散。
+
+优先路径：
+
+- 为 console zen `anthropic.ts` / `openai.ts` 的外部响应建立 decoder/schema 边界。
+- 明确 provider-normalized message 的内部形态。
+- 让 provider-specific quirks 停留在 adapter 内，不继续污染 core transform path。
+
+### P2：拆 `prompt.ts` 的职责，而不是机械按行数切文件
+
+目标不是“1,780 行变成几个小文件”这种表面工程，而是切出真正的变更边界：
+
+- prompt input resolution
+- tool definition/building
+- message preparation
+- compaction/overflow handling
+- shell command path
+- subtask delegation
+- event publishing boundary
+
+拆分后，新增 tool、修改 provider message、调整 compaction、处理 session event 不应都回到同一个文件里改。
+
+### P3：处理重复块和循环依赖
+
+在 P0/P1/P2 之后再处理重复和 SCC。否则容易把屎山里的重复抽成另一个更难懂的屎山抽象。
+
+优先处理跨文件重复和高 fan-in 模块；文件内重复可以等行为边界稳定后再清。
 
 ---
 
-**资深开发者读完**: "哈，这不就是我上家公司那个项目吗？只是 OpenCode 团队把它开源了"
+## 附录 A. 指标核对表
 
-**决策者读完**: "这个项目短期内不可能稳定，我们需要考虑替代方案"
+| 指标 | 当前报告采用值 | 来源 |
+|---|---:|---|
+| Source files | 1,154 | `autoresearch-report.txt` |
+| Test files | 408 | `autoresearch-report.txt` |
+| Source lines | 214,402 | `autoresearch-report.txt` |
+| Test lines | 107,212 | `autoresearch-report.txt` |
+| Test/source ratio | 0.35 | `autoresearch-report.txt` |
+| Files >500 LOC | 59 | `autoresearch-report.txt` |
+| Files >1000 LOC | 18 | `autoresearch-report.txt` |
+| Duplicate blocks | 647 | `autoresearch-report.txt` |
+| Duplicate instances | 1,418 | `autoresearch-report.txt` |
+| `any` total | 754 | `autoresearch-report.txt` |
+| `any` source | 493 | `autoresearch-report.txt` |
+| `any` test | 261 | `autoresearch-report.txt` |
+| `@ts-ignore` / `@ts-expect-error` | 63 | `autoresearch-report.txt` |
+| `catch(e: any)` | 11 | `autoresearch-report.txt` |
+| TODO/FIXME/HACK real | 16 | `autoresearch-report.txt` |
+| Dual-write markers | 16 | `autoresearch-report.txt` + source search |
+| `@deprecated` markers | 20 | `autoresearch-report.txt` |
+| Effect.gen / yield* files | 188 | `autoresearch-report.txt` |
+| Effect import files | 271 | `autoresearch-report.txt` |
+| Deep nesting lines | 3,314 | `autoresearch-report.txt` |
+| Circular dependency SCCs | 5 | `autoresearch-report.txt` |
+| Largest SCC | 19 modules | `autoresearch-report.txt` |
+| Fragile tests | 5 | `autoresearch-report.txt` |
+| Giant test files | 17 | `autoresearch-report.txt` |
+| Total tests | 2,923 | `autoresearch-report.txt` |
+| Failed tests | 11 | `autoresearch-report.txt` |
+| Pass rate | 99.6% | `autoresearch-report.txt` |
+| v0.x unstable deps | 19 | `autoresearch-report.txt` |
+| Patched packages | 7 | `autoresearch-report.txt` |
+| Non-null assertions | 212 | `autoresearch-report.txt` |
+| Composite debt score | 92.4/100 | `autoresearch-report.txt` |
 
 ---
 
-**OpenCode: 一个用 186K 行代码证明了"如何把简单事情搞复杂"的项目。**
+## 附录 B. 已删除或降级的旧叙事
 
-**复合债务评分: 92.4 / 100**
+| 旧叙事 | 处理 |
+|---|---|
+| 抹黑测试资产 | 删除。改为“测试资产不少，但关键回归仍失败”。 |
+| 把空 catch 当系统性灾难 | 删除。11 处 `catch(e: any)` 可作为类型债指标，但不再当核心控诉。 |
+| 把 Effect 本身当原罪 | 降级。改为“深度绑定 beta Effect + 超大 Effect 编排链路带来风险”。 |
+| 合成的 Effect 示例 | 删除。不再把示意代码伪装成技术深挖证据。 |
+| 无来源的自建 agent 基线和倍数比较 | 删除。无可靠基线。 |
+| 无算式的成本/ROI 叙事 | 删除。无可核验计算模型。 |
+| 人身化贬损类比 | 删除。情绪判断没有工程基线。 |
+| 仓库派生/接手叙事 | 删除。当前报告只批评当前 OpenCode 代码库。 |
+| 反复引用 `dogshit` 注释 | 收敛为一次证据。它是症状，不是唯一判决。 |
 
-**开发者自己都知道: "fix this stupid inefficient dogshit function"**
+最终判断不变：OpenCode 是一座真实的技术债屎山。修订后的报告只是把不诚信的夸张删掉，让剩下的批评更难反驳。
